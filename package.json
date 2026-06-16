@@ -1,0 +1,11 @@
+{
+  "name": "quan-knowledge-dev",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "node scripts/dev-server.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

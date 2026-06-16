@@ -1,0 +1,41 @@
+{
+  "knowledge_bases": [
+    {
+      "id": "7412047272751870",
+      "name": "量子计算学习材料",
+      "total_size": 96,
+      "status": "partial",
+      "documents": []
+    },
+    {
+      "id": "7425064727240963",
+      "name": "量子产业研究报告",
+      "total_size": 106,
+      "status": "partial",
+      "documents": []
+    },
+    {
+      "id": "7411640966326739",
+      "name": "金贻荣老师的直播课件",
+      "total_size": 79,
+      "status": "partial",
+      "documents": []
+    },
+    {
+      "id": "7408677623443647",
+      "name": "量子计算",
+      "total_size": 44,
+      "status": "complete",
+      "documents": []
+    },
+    {
+      "id": "7441506466037417",
+      "name": "李博士的项目",
+      "total_size": 111,
+      "status": "partial",
+      "documents": []
+    }
+  ],
+  "collected_count": 0,
+  "last_updated": "2026-06-13T17:30:28+08:00"
+}

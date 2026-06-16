@@ -1,0 +1,3062 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>量子知识图谱 · 3D推演引擎</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;background:#050a14;color:#e0e0e0;overflow:hidden;height:100vh}
+#app{display:flex;height:100vh}
+
+/* === 左侧3D图谱 === */
+#globe-panel{flex:1;position:relative;min-width:400px}
+#globe-panel canvas{display:block}
+#globe-panel.mode-2d canvas,#globe-panel.mode-2d #globe-stats,#globe-panel.mode-2d #globe-hint,#globe-panel.mode-2d #research-detail,#globe-panel.mode-2d #path-dock{display:none}
+#globe-panel.mode-2d #classic-2d-frame{display:block}
+#globe-hint{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);font-size:11px;color:#3a5a7c;letter-spacing:1px;pointer-events:none;z-index:5}
+#globe-title{position:absolute;top:16px;left:20px;z-index:5}
+#globe-title h1{font-size:18px;background:linear-gradient(135deg,#60A5FA,#C084FC);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-weight:700}
+#globe-title p{font-size:11px;color:#5c7a99;margin-top:2px}
+#globe-stats{position:absolute;top:16px;right:20px;z-index:5;display:flex;gap:8px}
+.stat-pill{background:rgba(255,255,255,0.05);border:1px solid #1e3a5f;border-radius:8px;padding:4px 10px;font-size:10px;color:#78909c;text-align:center}
+.stat-pill .num{font-size:16px;font-weight:700;color:#60A5FA;display:block}
+.map-switch{position:absolute;top:76px;left:20px;z-index:8;display:flex;gap:6px;padding:4px;border:1px solid rgba(103,124,148,.35);background:rgba(9,18,32,.78);backdrop-filter:blur(10px);border-radius:9px}
+.map-switch button{width:42px;height:30px;border-radius:7px;border:0;background:transparent;color:#8da1b8;cursor:pointer;font-size:12px;font-weight:700}
+.map-switch button.active{background:linear-gradient(135deg,rgba(52,211,153,.25),rgba(251,191,36,.18));color:#f8fafc;box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
+.lang-switch{position:absolute;top:76px;right:20px;z-index:8;display:flex;gap:6px;padding:4px;border:1px solid rgba(103,124,148,.35);background:rgba(9,18,32,.78);backdrop-filter:blur(10px);border-radius:9px}
+.lang-switch button{width:52px;height:30px;border-radius:7px;border:0;background:transparent;color:#8da1b8;cursor:pointer;font-size:12px;font-weight:700}
+.lang-switch button.active{background:linear-gradient(135deg,rgba(96,165,250,.25),rgba(168,85,247,.18));color:#f8fafc;box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
+#classic-2d-frame{display:none;position:absolute;inset:112px 0 0 0;width:100%;height:calc(100% - 112px);border:0;background:#0a0e17;z-index:4}
+#path-dock{position:absolute;left:20px;bottom:18px;width:min(520px,calc(100% - 40px));z-index:6;display:flex;gap:8px;flex-wrap:wrap}
+.path-chip{border:1px solid rgba(255,255,255,.12);background:rgba(12,22,35,.72);color:#cbd5e1;border-radius:8px;padding:7px 9px;font-size:11px;cursor:pointer;backdrop-filter:blur(10px)}
+.path-chip.active{color:#fff;box-shadow:0 0 0 1px var(--chip-color),0 0 18px rgba(255,255,255,.08);border-color:var(--chip-color)}
+#research-detail{position:absolute;right:18px;bottom:18px;width:380px;max-height:54vh;overflow:auto;z-index:7;padding:14px;background:rgba(11,18,28,.86);border:1px solid rgba(148,163,184,.22);border-radius:10px;backdrop-filter:blur(14px);box-shadow:0 18px 60px rgba(0,0,0,.32)}
+#research-detail h3{font-size:15px;color:#f8fafc;margin-bottom:6px}
+#research-detail .muted{font-size:11px;color:#91a4bb;line-height:1.6}
+#research-detail .tag-row{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 10px}
+#research-detail .tag{font-size:10px;padding:3px 7px;border-radius:999px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);color:#cbd5e1}
+#research-detail .section-title{font-size:11px;color:#fbbf24;margin:10px 0 5px;font-weight:700}
+#research-detail .source-link{display:block;color:#93c5fd;text-decoration:none;font-size:11px;line-height:1.55;padding:5px 0;border-top:1px solid rgba(255,255,255,.06)}
+#research-detail .source-link:hover{color:#bfdbfe}
+
+/* === 右侧推演面板 === */
+#reasoning-panel{width:440px;background:linear-gradient(180deg,#0d1b2a,#1b2838);border-left:1px solid #1e3a5f;display:flex;flex-direction:column;flex-shrink:0;z-index:10}
+#panel-header{padding:20px 20px 12px;border-bottom:1px solid #1e3a5f;display:flex;justify-content:space-between;align-items:flex-start}
+#panel-header h2{font-size:16px;background:linear-gradient(135deg,#60A5FA,#C084FC);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-weight:700}
+#panel-header p{font-size:11px;color:#5c7a99;margin-top:2px}
+.header-actions{display:flex;gap:6px}
+.header-btn{padding:6px 10px;border-radius:6px;border:1px solid #1e3a5f;background:rgba(255,255,255,0.03);color:#78909c;cursor:pointer;font-size:11px;transition:all .2s}
+.header-btn:hover{background:rgba(96,165,250,0.15);color:#e0e0e0}
+
+/* 模式切换 */
+.mode-tabs{display:flex;gap:6px;margin:12px 20px}
+.mode-tab{flex:1;padding:8px;text-align:center;border-radius:8px;border:1px solid #1e3a5f;background:rgba(255,255,255,0.03);color:#78909c;cursor:pointer;font-size:12px;font-weight:500;transition:all .2s}
+.mode-tab:hover{background:rgba(96,165,250,0.1)}
+.mode-tab.active{background:rgba(96,165,250,0.2);border-color:#60A5FA;color:#e0e0e0}
+
+/* 输入区 */
+.input-area{padding:0 20px 12px;display:flex;gap:8px}
+#question-input{flex:1;padding:10px 14px;background:rgba(255,255,255,0.05);border:1px solid #1e3a5f;border-radius:8px;color:#e0e0e0;font-size:13px;outline:none;resize:none;min-height:40px;max-height:100px;transition:border-color .3s}
+#question-input:focus{border-color:#60A5FA}
+#ask-btn{padding:10px 18px;background:linear-gradient(135deg,#3b82f6,#8b5cf6);border:none;border-radius:8px;color:#fff;cursor:pointer;font-size:13px;font-weight:600;white-space:nowrap;transition:opacity .2s}
+#ask-btn:hover{opacity:.9}
+#ask-btn:disabled{opacity:.4;cursor:not-allowed}
+
+/* 快捷问题 */
+.quick-questions{padding:0 20px 12px;display:flex;flex-wrap:wrap;gap:6px}
+.quick-q{padding:4px 10px;border-radius:6px;border:1px solid #1e3a5f;background:rgba(255,255,255,0.03);color:#78909c;cursor:pointer;font-size:10px;transition:all .2s}
+.quick-q:hover{background:rgba(96,165,250,0.15);color:#b0bec5}
+
+/* 推演内容 */
+#reasoning-content{flex:1;overflow-y:auto;padding:16px 20px;scroll-behavior:smooth}
+#reasoning-content::-webkit-scrollbar{width:4px}
+#reasoning-content::-webkit-scrollbar-thumb{background:#1e3a5f;border-radius:4px}
+
+/* 阶段指示器 */
+.phase-indicator{display:flex;align-items:center;gap:8px;padding:8px 12px;margin-bottom:10px;background:rgba(96,165,250,0.08);border:1px solid rgba(96,165,250,0.2);border-radius:8px;font-size:12px;color:#60A5FA}
+.phase-indicator .spinner{width:14px;height:14px;border:2px solid #1e3a5f;border-top:2px solid #60A5FA;border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0}
+.phase-indicator.completed{background:rgba(52,211,153,0.08);border-color:rgba(52,211,153,0.2);color:#34D399}
+.phase-indicator.completed .spinner{animation:none;border-color:#34D399;border-top-color:#34D399;background:#34D399}
+.phase-indicator.completed .spinner::after{content:'✓';position:absolute;color:#050a14;font-size:10px;font-weight:700;top:50%;left:50%;transform:translate(-50%,-50%)}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* 推理步骤 */
+.reasoning-step{margin-bottom:14px;animation:fadeIn .3s ease}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.step-header{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.step-number{width:22px;height:22px;border-radius:50%;background:rgba(96,165,250,0.2);color:#60A5FA;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.step-title{font-size:13px;font-weight:600;color:#e0e0e0}
+.step-body{padding:8px 12px;background:rgba(255,255,255,0.03);border:1px solid #1e3a5f;border-radius:8px;font-size:12px;line-height:1.7;color:#b0bec5}
+.step-body code{background:rgba(96,165,250,0.1);padding:1px 4px;border-radius:3px;font-size:11px;color:#93c5fd}
+.stream-placeholder{display:inline-flex;align-items:center;gap:6px;color:#60A5FA;font-size:12px}
+.stream-placeholder::before{content:'';width:10px;height:10px;border:2px solid #1e3a5f;border-top-color:#60A5FA;border-radius:50%;animation:spin .8s linear infinite}
+
+/* 智能体卡片 */
+.agent-card{margin-bottom:10px;padding:10px 12px;background:rgba(255,255,255,0.03);border:1px solid #1e3a5f;border-radius:8px;animation:fadeIn .3s ease}
+.agent-header{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.agent-avatar{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0}
+.agent-name{font-size:13px;font-weight:600;color:#e0e0e0}
+.agent-role{font-size:10px;color:#78909c;margin-left:auto}
+.agent-content{font-size:12px;line-height:1.7;color:#b0bec5;padding-left:36px}
+.agent-stance{display:inline-block;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:600;margin-left:4px}
+.stance-optimistic{background:rgba(52,211,153,0.2);color:#34D399}
+.stance-pessimistic{background:rgba(248,113,113,0.2);color:#F87171}
+.stance-neutral{background:rgba(96,165,250,0.2);color:#60A5FA}
+.stance-observer{background:rgba(251,191,36,0.2);color:#FBBF24}
+
+/* 轮次标记 */
+.round-marker{display:flex;align-items:center;gap:8px;margin:14px 0 8px;font-size:12px;font-weight:600;color:#C084FC}
+.round-marker::before,.round-marker::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,transparent,#1e3a5f,transparent)}
+
+/* 预测结论 */
+.prediction-box{margin-top:14px;padding:14px;background:linear-gradient(135deg,rgba(96,165,250,0.1),rgba(192,132,252,0.1));border:1px solid rgba(96,165,250,0.3);border-radius:10px;animation:fadeIn .5s ease}
+.prediction-title{font-size:14px;font-weight:700;color:#C084FC;margin-bottom:8px}
+.prediction-text{font-size:12px;line-height:1.8;color:#e0e0e0}
+.confidence-bar{margin:10px 0;height:4px;background:rgba(255,255,255,0.1);border-radius:4px;overflow:hidden}
+.confidence-fill{height:100%;border-radius:4px;transition:width .5s ease}
+.evidence-list{margin-top:8px}
+.evidence-item{font-size:11px;color:#78909c;padding:3px 0 3px 10px;border-left:2px solid #1e3a5f;margin:3px 0}
+
+/* 协调者总结 */
+.coordinator-box{margin:12px 0;padding:12px;background:rgba(192,132,252,0.08);border:1px solid rgba(192,132,252,0.2);border-radius:8px;font-size:12px;line-height:1.7;color:#c4b5fd}
+
+/* IMA引用区 */
+.ima-references{margin-top:14px;padding:12px;background:rgba(251,191,36,0.06);border:1px solid rgba(251,191,36,0.2);border-radius:10px;animation:fadeIn .4s ease}
+.ima-ref-title{font-size:13px;font-weight:700;color:#FBBF24;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.ima-ref-item{padding:6px 10px;margin:4px 0;background:rgba(255,255,255,0.03);border:1px solid #1e3a5f;border-radius:6px;font-size:11px;color:#b0bec5;display:flex;justify-content:space-between;align-items:center}
+.ima-ref-item .ref-kb{font-size:9px;color:#FBBF24;background:rgba(251,191,36,0.1);padding:1px 6px;border-radius:4px}
+.ima-ref-item .ref-unlock{color:#34D399;font-size:12px}
+.ima-content-preview{margin-top:6px;padding:8px;background:rgba(255,255,255,0.03);border-radius:6px;font-size:11px;line-height:1.6;color:#78909c;max-height:120px;overflow-y:auto}
+
+/* 导出模态框 */
+.modal-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:200;display:none;align-items:center;justify-content:center}
+.modal-overlay.open{display:flex}
+.modal-box{background:#0d1b2a;border:1px solid #1e3a5f;border-radius:12px;padding:24px;width:420px;max-height:80vh;overflow-y:auto}
+.modal-title{font-size:16px;font-weight:700;color:#e0e0e0;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center}
+.modal-close{cursor:pointer;color:#78909c;font-size:18px}
+.modal-close:hover{color:#e0e0e0}
+.modal-section{margin-bottom:14px}
+.modal-section label{display:block;font-size:12px;color:#78909c;margin-bottom:6px;font-weight:600}
+.modal-options{display:flex;gap:8px}
+.modal-option{flex:1;padding:10px;border-radius:8px;border:1px solid #1e3a5f;background:rgba(255,255,255,0.03);color:#78909c;cursor:pointer;text-align:center;font-size:12px;transition:all .2s}
+.modal-option:hover{background:rgba(96,165,250,0.1)}
+.modal-option.selected{background:rgba(96,165,250,0.2);border-color:#60A5FA;color:#e0e0e0}
+.modal-export-btn{width:100%;padding:12px;background:linear-gradient(135deg,#3b82f6,#8b5cf6);border:none;border-radius:8px;color:#fff;font-size:14px;font-weight:600;cursor:pointer;margin-top:8px}
+.modal-export-btn:hover{opacity:.9}
+.modal-export-btn:disabled{opacity:.4;cursor:not-allowed}
+.export-status{margin-top:10px;font-size:11px;color:#78909c;text-align:center}
+
+/* Tooltip */
+#tooltip{position:fixed;pointer-events:none;background:rgba(13,27,42,0.95);border:1px solid #1e3a5f;border-radius:8px;padding:8px 12px;font-size:12px;color:#e0e0e0;display:none;z-index:100;max-width:240px}
+
+/* 加载覆盖 */
+#loading{position:fixed;top:0;left:0;width:100%;height:100%;background:#050a14;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:999;transition:opacity .5s;pointer-events:none}
+#loading.hidden{opacity:0;pointer-events:none}
+.loading-spinner{width:50px;height:50px;border:3px solid #1a3a5c;border-top:3px solid #60A5FA;border-radius:50%;animation:spin 1s linear infinite;margin-bottom:16px}
+#loading p{color:#5c7a99;font-size:13px}
+
+/* 3D节点闪烁动画 */
+@keyframes nodeFlash{
+  0%,100%{opacity:1}
+  50%{opacity:0.3}
+}
+
+@media(max-width:900px){
+  #app{flex-direction:column}
+  #globe-panel{height:50vh;min-width:auto}
+  #reasoning-panel{width:100%;height:50vh}
+}
+</style>
+</head>
+<body>
+
+<div id="loading">
+  <div class="loading-spinner"></div>
+  <p>正在构建量子知识星球…</p>
+</div>
+
+<div id="app">
+  <!-- 左侧3D地球 -->
+  <div id="globe-panel">
+    <div id="globe-title">
+      <h1>量子计算研究地图</h1>
+      <p>3D Research Globe · 来源/证据/难度/攻击路径</p>
+    </div>
+    <div class="map-switch" aria-label="地图维度切换">
+      <button class="active" id="switch-3d" title="3D研究地图">3D</button>
+      <button id="switch-2d" title="2D原知识图谱">2D</button>
+    </div>
+    <div class="lang-switch" aria-label="节点语言切换">
+      <button class="active" id="switch-zh" title="显示中文节点">中文</button>
+      <button id="switch-en" title="Show English labels">EN</button>
+    </div>
+    <div id="globe-stats"></div>
+    <div id="path-dock"></div>
+    <div id="research-detail">
+      <h3>正式研究地图</h3>
+      <div class="muted">点击地球节点查看原始论文、证据链、难度和研究演进路径。路径表示从问题提出到算法突破再到硬件实现的知识推进路线。</div>
+    </div>
+    <iframe id="classic-2d-frame" title="二维量子知识图谱" data-src="./quantum_knowledge_graph.html"></iframe>
+    <div id="globe-hint">拖拽旋转 | 滚轮缩放 | 点击节点查看文献证据 | R 自动旋转 | 0 重置</div>
+  </div>
+
+  <!-- 右侧推演面板 -->
+  <div id="reasoning-panel">
+    <div id="panel-header">
+      <div>
+        <h2>🔮 知识推演引擎</h2>
+      </div>
+      <div class="header-actions">
+        <button class="header-btn" id="export-btn" title="导出报告">📄 导出报告</button>
+      </div>
+    </div>
+
+    <div class="mode-tabs">
+      <div class="mode-tab active" data-mode="reasoning">🔬 逐步推理</div>
+      <div class="mode-tab" data-mode="simulation">👥 多智能体模拟</div>
+    </div>
+
+    <div class="input-area">
+      <textarea id="question-input" rows="2" placeholder="输入你的量子计算问题…"></textarea>
+      <button id="ask-btn" onclick="window.startReasoning?.()">推演</button>
+    </div>
+
+    <div class="quick-questions">
+      <span class="quick-q">量子计算未来5年趋势</span>
+      <span class="quick-q">超导量子能否容错</span>
+      <span class="quick-q">中国量子产业格局</span>
+      <span class="quick-q">量子纠错何时突破</span>
+    </div>
+
+    <div id="reasoning-content">
+      <div style="text-align:center;padding:40px 20px;color:#5c7a99;font-size:12px;line-height:2">
+        <div style="font-size:40px;margin-bottom:12px">◎</div>
+        输入问题开始推演<br>
+        <span style="font-size:11px">推理模式：5步链式推理 | 模拟模式：多智能体讨论</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="tooltip"></div>
+
+<!-- 导出模态框 -->
+<div class="modal-overlay" id="export-modal">
+  <div class="modal-box">
+    <div class="modal-title">
+      📄 导出推演报告
+      <span class="modal-close" id="export-modal-close">✕</span>
+    </div>
+    <div class="modal-section">
+      <label>报告语言</label>
+      <div class="modal-options" id="lang-options">
+        <div class="modal-option selected" data-value="zh">🇨🇳 中文</div>
+        <div class="modal-option" data-value="en">🇺🇸 English</div>
+      </div>
+    </div>
+    <div class="modal-section">
+      <label>报告格式</label>
+      <div class="modal-options" id="format-options">
+        <div class="modal-option selected" data-value="html">🌐 HTML</div>
+        <div class="modal-option" data-value="pdf">📕 PDF</div>
+        <div class="modal-option" data-value="docx">📘 Word</div>
+      </div>
+    </div>
+    <div class="modal-section">
+      <label>导出目录</label>
+      <div style="display:flex;gap:8px">
+        <input id="export-dir" type="text" value="~/Downloads" style="flex:1;padding:8px 12px;background:rgba(255,255,255,0.05);border:1px solid #1e3a5f;border-radius:6px;color:#e0e0e0;font-size:12px;outline:none">
+        <button id="export-dir-btn" style="padding:8px 12px;border-radius:6px;border:1px solid #1e3a5f;background:rgba(255,255,255,0.03);color:#78909c;cursor:pointer;font-size:11px">浏览</button>
+      </div>
+    </div>
+    <button class="modal-export-btn" id="do-export-btn">🚀 生成报告</button>
+    <div class="export-status" id="export-status"></div>
+  </div>
+</div>
+
+<script type="importmap">
+{"imports":{
+  "three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+}}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ============================================================
+// 全局状态
+// ============================================================
+let GRAPH_DATA = null;
+let currentMode = 'reasoning';
+let isReasoning = false;
+let lastReasoningResult = null;  // 保存最近一次推演结果用于导出
+let lastPhaseEl = null;  // 追踪当前活动的phase indicator元素
+let questionLang = 'zh';  // 当前问题的语言: 'zh' 或 'en'
+
+function hideInitialLoading() {
+  const loadingEl = document.getElementById('loading');
+  if (loadingEl) {
+    loadingEl.classList.add('hidden');
+    setTimeout(() => { const ld=document.getElementById('loading'); if(ld) ld.remove(); }, 600);
+  }
+}
+
+// UI 文字映射（中英文）
+const UI_TEXT = {
+  zh: {
+    title: '量子知识图谱 · 3D推演引擎',
+    subtitle: '3D Research Globe · 来源/证据/难度/攻击路径',
+    hint: '拖拽旋转 | 滚轮缩放 | 点击节点查看文献证据 | R 自动旋转 | 0 重置',
+    panelTitle: '🔮 知识推演引擎',
+    panelSubtitle: 'MiroFish-Style Reasoning & Simulation',
+    exportBtn: '📄 导出报告',
+    tabReasoning: '🔬 逐步推理',
+    tabSimulation: '👥 多智能体模拟',
+    inputPlaceholder: '输入你的量子计算问题…',
+    askBtn: '推演',
+    quickQ1: '量子计算未来5年趋势',
+    quickQ2: '超导量子能否容错',
+    quickQ3: '中国量子产业格局',
+    quickQ4: '量子纠错何时突破',
+    emptyTitle: '输入问题开始推演',
+    emptyDesc: '推理模式：5步链式推理 | 模拟模式：多智能体讨论',
+    loadingText: '正在构建量子知识星球…',
+    exportModalTitle: '📄 导出推演报告',
+    langLabel: '报告语言',
+    formatLabel: '报告格式',
+    dirLabel: '导出目录',
+    browseBtn: '浏览',
+    generateBtn: '🚀 生成报告',
+    generatingText: '正在生成报告…',
+    exportOk: '✅ 报告已生成并下载！',
+    exportFail: '❌ 生成失败: ',
+    noResultAlert: '请先完成一次推演再导出报告',
+    dirPrompt: '请输入导出目录路径：',
+    roundLabel: '💬 第 {n} 轮讨论',
+    roundSummaryLabel: '📋 第{n}轮摘要：',
+    coordLabel: '🎯 协调者总结：',
+    predLabel: '🔮 预测结论',
+    confidenceLabel: '置信度: {p}%',
+    evidenceLabel: '支撑证据:',
+    factorsLabel: '关键因素:',
+    imaTitle: '📚 IMA 知识库引用 ({n})',
+    imaPaid: '🔓 公开来源 - 可查看完整内容',
+    imaFree: '🔓 公开来源 - 可查看完整内容',
+    imaLoading: '正在检索IMA知识库引用...',
+    imaUnlockBtn: '🔓 查看完整内容',
+    imaUnlockAllBtn: '🔓 原始数据来源已开放',
+    imaUnlockInfo: '所有用户均可查看原始数据来源',
+    errorTitle: '❌ 推演失败',
+    networkError: '网络连接失败 — 无法连接到推演服务。请检查服务是否正常运行（端口6123）。',
+    serverError: 'AI服务暂时不可用（{err}），请稍后重试。',
+    retryBtn: '🔄 重试',
+    questionLabel: '❓ ',
+    phaseExtracting: '正在从知识图谱中提取相关实体...',
+    phaseProfileGen: '正在为每个实体生成智能体人设...',
+    phaseDiscuss: '开始第{n}轮讨论模拟...',
+    phaseDiscussDone: '{n}轮讨论模拟完成',
+    phaseCoordSummarizing: '协调者正在总结讨论...',
+    phasePredicting: '正在生成最终预测报告...',
+    simulationDone: '多智能体模拟完成',
+    agentGenerating: '正在为 {name} 生成人设...',
+    agentSpeaking: '正在为 {name} 生成发言...',
+    roundSummarizing: '正在生成第{n}轮摘要...',
+    globeTitle: '量子计算研究地图',
+  },
+  en: {
+    title: 'Quantum Knowledge Graph · 3D Reasoning Engine',
+    subtitle: '3D Research Globe · Sources / Evidence / Difficulty / Paths',
+    hint: 'Drag to rotate | Scroll to zoom | Click node for evidence | R auto-rotate | 0 reset',
+    panelTitle: '🔮 Knowledge Reasoning Engine',
+    panelSubtitle: 'MiroFish-Style Reasoning & Simulation',
+    exportBtn: '📄 Export Report',
+    tabReasoning: '🔬 Step-by-Step Reasoning',
+    tabSimulation: '👥 Multi-Agent Simulation',
+    inputPlaceholder: 'Enter your quantum computing question…',
+    askBtn: 'Run',
+    quickQ1: 'Quantum computing trends in 5 years',
+    quickQ2: 'Can superconducting qubits achieve fault tolerance?',
+    quickQ3: 'China quantum industry landscape',
+    quickQ4: 'When will quantum error correction break through?',
+    emptyTitle: 'Enter a question to start reasoning',
+    emptyDesc: 'Reasoning mode: 5-step chain-of-thought | Simulation mode: multi-agent discussion',
+    loadingText: 'Building quantum knowledge planet…',
+    exportModalTitle: '📄 Export Report',
+    langLabel: 'Report Language',
+    formatLabel: 'Report Format',
+    dirLabel: 'Export Directory',
+    browseBtn: 'Browse',
+    generateBtn: '🚀 Generate Report',
+    generatingText: 'Generating report...',
+    exportOk: '✅ Report generated and downloaded!',
+    exportFail: '❌ Export failed: ',
+    noResultAlert: 'Please complete a reasoning session before exporting',
+    dirPrompt: 'Enter export directory path:',
+    roundLabel: '💬 Round {n} Discussion',
+    roundSummaryLabel: '📋 Round {n} Summary:',
+    coordLabel: '🎯 Coordinator Summary:',
+    predLabel: '🔮 Prediction Conclusion',
+    confidenceLabel: 'Confidence: {p}%',
+    evidenceLabel: 'Supporting Evidence:',
+    factorsLabel: 'Key Factors:',
+    imaTitle: '📚 IMA Knowledge Base References ({n})',
+    imaPaid: '🔓 Open sources - Full content available',
+    imaFree: '🔓 Open sources - Full content available',
+    imaLoading: 'Searching IMA knowledge base references...',
+    imaUnlockBtn: '🔓 View full content',
+    imaUnlockAllBtn: '🔓 Original sources are open',
+    imaUnlockInfo: 'Original data sources are available to all users',
+    errorTitle: '❌ Reasoning Failed',
+    networkError: 'Network connection failed — Cannot connect to reasoning service. Please check if the service is running (port 6123).',
+    serverError: 'AI service temporarily unavailable ({err}), please retry later.',
+    retryBtn: '🔄 Retry',
+    questionLabel: '❓ ',
+    phaseExtracting: 'Extracting relevant entities from knowledge graph...',
+    phaseProfileGen: 'Generating agent profiles for each entity...',
+    phaseDiscuss: 'Starting Round {n} discussion simulation...',
+    phaseDiscussDone: '{n} rounds of discussion completed',
+    phaseCoordSummarizing: 'Coordinator is summarizing the discussion...',
+    phasePredicting: 'Generating final prediction report...',
+    simulationDone: 'Multi-agent simulation completed',
+    agentGenerating: 'Generating profile for {name}...',
+    agentSpeaking: 'Generating speech for {name}...',
+    roundSummarizing: 'Generating Round {n} summary...',
+    globeTitle: 'Quantum Computing Research Map',
+  }
+};
+
+function detectLanguage(text) {
+  // 检测文本是否主要为英文（简单启发式：非ASCII字符占比）
+  if (!text) return 'zh';
+  const asciiChars = text.replace(/[^\x00-\x7F]/g, '').length;
+  const ratio = asciiChars / text.length;
+  // 如果超过70%的字符是ASCII，判定为英文
+  return ratio > 0.7 ? 'en' : 'zh';
+}
+
+function t(key) {
+  const lang = questionLang;
+  let text = (UI_TEXT[lang] && UI_TEXT[lang][key]) || (UI_TEXT['zh'][key]) || key;
+  // 支持简单的模板替换
+  return text;
+}
+
+function applyUILanguage() {
+  const L = UI_TEXT[questionLang];
+  document.title = L.title;
+  document.querySelector('#globe-title h1').textContent = L.globeTitle;
+  document.querySelector('#globe-title p').textContent = L.subtitle;
+  document.getElementById('globe-hint').textContent = L.hint;
+  document.querySelector('#panel-header h2').textContent = L.panelTitle;
+  document.querySelector('#panel-header p').textContent = L.panelSubtitle;
+  document.querySelector('#export-btn').textContent = L.exportBtn;
+  document.querySelectorAll('.mode-tab')[0].textContent = L.tabReasoning;
+  document.querySelectorAll('.mode-tab')[1].textContent = L.tabSimulation;
+  document.getElementById('question-input').placeholder = L.inputPlaceholder;
+  document.getElementById('ask-btn').textContent = L.askBtn;
+  const quickQsEl = document.querySelectorAll('.quick-q');
+  if (quickQsEl.length >= 4) {
+    quickQsEl[0].textContent = L.quickQ1;
+    quickQsEl[1].textContent = L.quickQ2;
+    quickQsEl[2].textContent = L.quickQ3;
+    quickQsEl[3].textContent = L.quickQ4;
+  }
+  const loadingTextEl = document.querySelector('#loading p');
+  if (loadingTextEl) loadingTextEl.textContent = L.loadingText;
+  document.querySelector('#export-modal .modal-title').childNodes[0].textContent = L.exportModalTitle;
+  // 导出模态框标签
+  const modalLabels = document.querySelectorAll('.modal-section label');
+  if (modalLabels.length >= 3) {
+    modalLabels[0].textContent = L.langLabel;
+    modalLabels[1].textContent = L.formatLabel;
+    modalLabels[2].textContent = L.dirLabel;
+  }
+  document.getElementById('export-dir-btn').textContent = L.browseBtn;
+  document.getElementById('do-export-btn').textContent = L.generateBtn;
+
+  // 空状态文字
+  const emptyState = contentEl.querySelector('div');
+  if (emptyState && emptyState.textContent.includes('输入') || emptyState && emptyState.textContent.includes('Enter')) {
+    contentEl.innerHTML = `<div style="text-align:center;padding:40px 20px;color:#5c7a99;font-size:12px;line-height:2">
+      <div style="font-size:40px;margin-bottom:12px">🪐</div>
+      ${L.emptyTitle}<br>
+      <span style="font-size:11px">${L.emptyDesc}</span>
+    </div>`;
+  }
+}
+
+const TYPE_COLORS = {
+  concept: 0x60A5FA, company: 0xF59E0B, hardware: 0xEF4444,
+  application: 0x22D3EE, algorithm: 0xC084FC, person: 0x34D399,
+  theory: 0xFBBF24, protocol: 0xF87171, tool: 0x94A3B8,
+  organization: 0xA78BFA, material: 0xFB923C, report: 0xFDE68A,
+  qec: 0xA855F7, security: 0xFACC15, software: 0x2DD4BF, standard: 0x818CF8
+};
+const TYPE_LABELS = {
+  concept:'概念',company:'公司',hardware:'硬件',application:'应用',
+  algorithm:'算法',person:'人物',theory:'理论',protocol:'协议',
+  tool:'工具',organization:'机构',material:'材料',report:'报告',
+  qec:'纠错',security:'安全',software:'软件',standard:'标准'
+};
+
+const DOMAIN_COLORS = {
+  foundation: 0xF59E0B,
+  algorithm: 0xEF4444,
+  qec: 0xA855F7,
+  hardware: 0x38BDF8,
+  software: 0x34D399,
+  application: 0x22D3EE,
+  security: 0xFBBF24
+};
+
+const STAGE_LABELS = {
+  problem: '问题提出',
+  formalism: '理论形式化',
+  breakthrough: '算法突破',
+  implementation: '硬件实现',
+  application: '应用落地',
+  infrastructure: '软件基础设施'
+};
+
+const DIFFICULTY_LABELS = {
+  1: '入门',
+  2: '中级',
+  3: '高级',
+  4: '研究级',
+  5: '前沿攻坚'
+};
+
+const EN_LABEL_OVERRIDES = {
+  'Shor算法':'Shor Algorithm','Grover算法':'Grover Algorithm','VQE (变分量子本征求解器)':'VQE','QAOA (量子近似优化算法)':'QAOA','HHL算法':'HHL Algorithm',
+  '超导量子计算':'Superconducting Quantum Computing','拓扑量子计算':'Topological Quantum Computing','本源量子':'Origin Quantum','国盾量子':'QuantumCTek','图灵量子':'TuringQ','中科量枢':'CAS Quantum Hub',
+  '金贻荣':'Jin Yirong','郭光灿':'Guo Guangcan','郭国平':'Guo Guoping','低温CMOS测控芯片':'Cryogenic CMOS Control Chip','多量子芯片互连':'Multi-QPU Interconnect',
+  'Willow量子处理器':'Willow Quantum Processor','祖冲之三号':'Zuchongzhi 3','相干科技':'Coherent Quantum','中微达信':'Zhongwei Daxin','不筹量子':'Buchou Quantum','瀚海量子':'Hanhai Quantum',
+  '国防与安全':'Defense and Security','能源优化':'Energy Optimization','BB84协议':'BB84 Protocol','NIST后量子密码标准':'NIST PQC Standards','中国科学技术大学':'University of Science and Technology of China',
+  '中科院量子信息重点实验室':'CAS Key Lab of Quantum Information','AI驱动量子纠错':'AI-driven Quantum Error Correction','瀚海凌潮':'Hanhai Lingchao','中关村量子产业联盟':'Zhongguancun Quantum Industry Alliance',
+  '光子盒研究院':'PhotonBox Research Institute','IHEP计算中心':'IHEP Computing Center','陈昭昀':'Chen Zhaoyun','龙沛洵':'Long Peixun','苏汝铿':'Su Rukeng',
+  '量子精密测量':'Quantum Precision Measurement','量子增强认知推荐算法':'Quantum-enhanced Cognitive Recommendation Algorithm','中性原子分区架构':'Neutral Atom Zoned Architecture',
+  '量子计算产业化':'Quantum Computing Commercialization','超导配对关联':'Superconducting Pairing Correlation','量子-经典单片全集成':'Quantum-classical Monolithic Integration',
+  '量子比特操控':'Qubit Control','量子比特读取':'Qubit Readout','NISQ时代':'NISQ Era','量子比特体系':'Qubit Modalities','蜀山系列芯片':'Shushan Series Chip',
+  '稀释制冷机':'Dilution Refrigerator','量子耦合线路':'Quantum Coupling Circuit','可调耦合器':'Tunable Coupler','量子药物发现':'Quantum Drug Discovery',
+  '量子化学模拟':'Quantum Chemistry Simulation','量子材料科学':'Quantum Materials Science','量子金融':'Quantum Finance','量子传感':'Quantum Sensing',
+  '本源量子云平台':'Origin Quantum Cloud','量子比特读取技术':'Qubit Readout Technology','频分复用读取':'Frequency-multiplexed Readout','量子纠错码':'Quantum Error-correcting Code',
+  '3D堆叠互连':'3D Stacked Interconnect','量子比特初始化':'Qubit Initialization','量子组合优化':'Quantum Combinatorial Optimization','混合量子药物发现管线':'Hybrid Quantum Drug Discovery Pipeline',
+  '中关村量子产业联盟报告':'Zhongguancun Quantum Industry Alliance Report','量子比特体系比较':'Qubit Modality Comparison','量子工程学':'Quantum Engineering',
+  '原子重用与补充':'Atom Reuse and Replenishment','百度量子计算':'Baidu Quantum Computing','阿里巴巴达摩院量子实验室':'Alibaba DAMO Quantum Lab','腾讯量子实验室':'Tencent Quantum Lab',
+  '华为量子计算':'Huawei Quantum Computing','芝加哥大学':'University of Chicago','代尔夫特理工大学':'Delft University of Technology','因斯布鲁克大学':'University of Innsbruck',
+  '量子网络':'Quantum Network','量子中继器':'Quantum Repeater','量子存储器':'Quantum Memory','量子互联网':'Quantum Internet','噪声':'Noise',
+  '量子门集':'Quantum Gate Set','通用门集':'Universal Gate Set','Grover搜索算法':'Grover Search Algorithm','海森堡不确定性原理':'Heisenberg Uncertainty Principle',
+  '普朗克常数':'Planck Constant','德布罗意波':'de Broglie Wave','玻尔量子论':'Bohr Quantum Theory','谐振腔':'Resonator','Sycamore处理器':'Sycamore Processor',
+  'IBM Eagle处理器':'IBM Eagle Processor','IBM Condor处理器':'IBM Condor Processor','IBM Heron处理器':'IBM Heron Processor','九章光量子计算机':'Jiuzhang Photonic Quantum Computer',
+  'Atom Computing中性原子处理器':'Atom Computing Neutral Atom Processor','量子密码学':'Quantum Cryptography','量子优化':'Quantum Optimization','HiQ量子计算框架':'HiQ Quantum Computing Framework',
+  '超导量子比特能谱':'Superconducting Qubit Spectrum','GHZ态':'GHZ State','Kitaev链':'Kitaev Chain','中国':'China','美国':'United States','欧盟':'European Union','中国量子战略':'China Quantum Strategy',
+  '通用量子计算机':'Universal Quantum Computer','Grover搜索':'Grover Search','HHL线性方程':'HHL Linear Systems','NISQ范式':'NISQ Paradigm','量子纠错':'Quantum Error Correction',
+  '表面码':'Surface Code','逻辑量子比特实验':'Logical Qubit Experiment','DiVincenzo判据':'DiVincenzo Criteria','超导Transmon':'Superconducting Transmon','离子阱平台':'Trapped-ion Platform',
+  '光量子优势':'Photonic Quantum Advantage','中性原子阵列':'Neutral Atom Array','量子化学模拟':'Quantum Chemistry Simulation','量子机器学习':'Quantum Machine Learning',
+  '量子密码学':'Quantum Cryptography','后量子密码':'Post-quantum Cryptography','量子软件栈':'Quantum Software Stack','量子力学':'Quantum Mechanics','量子信息论':'Quantum Information Theory'
+};
+
+const ZH_LABEL_OVERRIDES = {
+  'NISQ (Noisy Intermediate-Scale Quantum)':'NISQ中等规模含噪量子',
+  'QOV (Quantum Optimization Variational)':'QOV量子变分优化',
+  'IBM':'IBM公司',
+  'Google':'谷歌',
+  'IQM':'IQM公司',
+  'Rigetti':'Rigetti公司',
+  'IonQ':'IonQ公司',
+  'PsiQuantum':'PsiQuantum公司',
+  'QuEra':'QuEra公司',
+  'Quantinuum':'Quantinuum公司',
+  'Michael Nielsen':'迈克尔·尼尔森',
+  'John Preskill':'约翰·普雷斯基尔',
+  'David Deutsch':'大卫·多伊奇',
+  'Qiskit':'Qiskit工具',
+  'Cirq':'Cirq工具',
+  'Q#':'Q#工具',
+  'PennyLane':'PennyLane工具',
+  'QuTiP':'QuTiP工具',
+  'Riverlane':'Riverlane公司',
+  'Alice & Bob':'Alice & Bob公司',
+  'Oxford Quantum Circuits (OQC)':'牛津量子电路',
+  'Oxford Quantum Circuits':'牛津量子电路',
+  'Quantonation':'Quantonation基金',
+  'Isaac Chuang':'艾萨克·庄',
+  'A.M. Zagoskin':'A.M. 扎戈斯金',
+  'Peter Shor':'彼得·肖尔',
+  'Lov Grover':'洛夫·格罗弗',
+  'QureGenAI':'QureGenAI公司',
+  'Alexandre Blais':'亚历山大·布莱',
+  'David D. Awschalom':'大卫·奥沙洛姆',
+  'William D. Oliver':'威廉·奥利弗',
+  'Quantinuum Helios':'Quantinuum Helios处理器',
+  'NVentures':'英伟达风投',
+  'Atom Computing':'Atom Computing公司',
+  'IQM Quantum':'IQM Quantum公司',
+  'Quantum Motion':'Quantum Motion公司',
+  'QuEra Computing':'QuEra Computing公司',
+  'Pasqal':'Pasqal公司',
+  'ColdQuanta/Infleqtion':'ColdQuanta/Infleqtion公司',
+  'MIT':'麻省理工学院',
+  'Stanford University':'斯坦福大学',
+  'Magic State Distillation':'魔态蒸馏',
+  'D-Wave':'D-Wave公司',
+  'Rigetti Computing':'Rigetti Computing公司',
+  'Xanadu':'Xanadu公司',
+  'EuroHPC':'欧洲高性能计算联盟'
+};
+
+const ZH_TYPE_LABELS = {
+  concept:'概念',company:'公司',hardware:'硬件',application:'应用',algorithm:'算法',person:'人物',
+  theory:'理论',protocol:'协议',tool:'工具',organization:'机构',material:'材料',
+  foundation:'基础',qec:'纠错',software:'软件',security:'安全',report:'报告',standard:'标准'
+};
+const EN_TYPE_LABELS = {
+  concept:'Concept',company:'Company',hardware:'Hardware',application:'Application',algorithm:'Algorithm',person:'Person',
+  theory:'Theory',protocol:'Protocol',tool:'Tool',organization:'Organization',material:'Material',
+  foundation:'Foundation',qec:'QEC',software:'Software',security:'Security',report:'Report',standard:'Standard'
+};
+
+const RESEARCH_NODES = [
+  {
+    id:'node_901', label:'量子力学', domain:'foundation', stage:'problem', difficulty:1,
+    vector:[-1.0,0.72,-0.15],
+    evidence:'量子态、叠加和测量给出了经典计算无法表达的信息载体。',
+    sources:[{short:'Dirac 1930', title:'The Principles of Quantum Mechanics', venue:'Oxford University Press', year:1930, url:'https://global.oup.com/academic/product/the-principles-of-quantum-mechanics-9780198520115'}]
+  },
+  {
+    id:'node_902', label:'量子信息论', domain:'foundation', stage:'formalism', difficulty:2,
+    vector:[-0.82,0.62,0.34],
+    evidence:'Holevo界和量子信道模型把“量子态能携带多少信息”变成可证明问题。',
+    sources:[{short:'Holevo 1973', title:'Bounds for the quantity of information transmitted by a quantum communication channel', venue:'Problems of Information Transmission', year:1973, url:'https://link.springer.com/article/10.1007/BF01065155'}]
+  },
+  {
+    id:'node_506', label:'通用量子计算机', domain:'foundation', stage:'problem', difficulty:3,
+    vector:[-0.72,0.18,-0.72],
+    evidence:'Deutsch 将 Church-Turing 原理物理化，提出可模拟任意有限物理系统的通用量子计算机。',
+    sources:[{short:'Deutsch 1985', title:'Quantum theory, the Church-Turing principle and the universal quantum computer', venue:'Proc. R. Soc. A', year:1985, doi:'10.1098/rspa.1985.0070', url:'https://royalsocietypublishing.org/doi/10.1098/rspa.1985.0070'}]
+  },
+  {
+    id:'node_105', label:'量子傅里叶变换', domain:'algorithm', stage:'formalism', difficulty:3,
+    vector:[-0.32,0.42,-0.86],
+    evidence:'QFT 把周期发现问题转化为可测的相位结构，成为 Shor 算法的核心组件。',
+    sources:[{short:'Coppersmith 1994', title:'An approximate Fourier transform useful in quantum factoring', venue:'arXiv', year:1994, url:'https://arxiv.org/abs/quant-ph/0201067'}]
+  },
+  {
+    id:'node_101', label:'Shor算法', domain:'algorithm', stage:'breakthrough', difficulty:4,
+    vector:[0.08,0.76,-0.76],
+    evidence:'整数分解和离散对数可在量子计算机上多项式时间求解，直接改变公钥密码威胁模型。',
+    sources:[{short:'Shor 1994/1997', title:'Polynomial-Time Algorithms for Prime Factorization and Discrete Logarithms on a Quantum Computer', venue:'SIAM J. Comput.', year:1997, url:'https://arxiv.org/abs/quant-ph/9508027'}]
+  },
+  {
+    id:'node_102', label:'Grover搜索', domain:'algorithm', stage:'breakthrough', difficulty:3,
+    vector:[0.38,0.36,-0.88],
+    evidence:'无结构搜索获得平方加速，并证明该量级基本最优。',
+    sources:[{short:'Grover 1996', title:'A fast quantum mechanical algorithm for database search', venue:'STOC', year:1996, doi:'10.1145/237814.237866', url:'https://arxiv.org/abs/quant-ph/9605043'}]
+  },
+  {
+    id:'node_107', label:'HHL线性方程', domain:'algorithm', stage:'breakthrough', difficulty:4,
+    vector:[0.66,0.18,-0.72],
+    evidence:'在线性系统求解中展示指数级量子加速的条件框架，推动量子线性代数路线。',
+    sources:[{short:'Harrow 2009', title:'Quantum algorithm for linear systems of equations', venue:'Phys. Rev. Lett.', year:2009, doi:'10.1103/PhysRevLett.103.150502', url:'https://arxiv.org/abs/0811.3171'}]
+  },
+  {
+    id:'node_012', label:'NISQ范式', domain:'algorithm', stage:'problem', difficulty:3,
+    vector:[-0.05,-0.08,-0.98],
+    evidence:'NISQ 定义了近期量子计算的约束：量子比特数量上升，但噪声限制可执行电路深度。',
+    sources:[{short:'Preskill 2018', title:'Quantum Computing in the NISQ era and beyond', venue:'Quantum', year:2018, doi:'10.22331/q-2018-08-06-79', url:'https://quantum-journal.org/papers/q-2018-08-06-79/'}]
+  },
+  {
+    id:'node_103', label:'VQE', domain:'algorithm', stage:'breakthrough', difficulty:3,
+    vector:[0.42,-0.24,-0.86],
+    evidence:'混合量子-经典优化绕开长相干需求，成为 NISQ 化学模拟的代表算法。',
+    sources:[{short:'Peruzzo 2014', title:'A variational eigenvalue solver on a photonic quantum processor', venue:'Nature Communications', year:2014, doi:'10.1038/ncomms5213', url:'https://www.nature.com/articles/ncomms5213'}]
+  },
+  {
+    id:'node_104', label:'QAOA', domain:'algorithm', stage:'breakthrough', difficulty:3,
+    vector:[0.74,-0.36,-0.58],
+    evidence:'以可调层数 p 连接组合优化、变分线路和近似保证，是 NISQ 优化路线核心节点。',
+    sources:[{short:'Farhi 2014', title:'A Quantum Approximate Optimization Algorithm', venue:'arXiv', year:2014, url:'https://arxiv.org/abs/1411.4028'}]
+  },
+  {
+    id:'node_904', label:'量子纠错', domain:'qec', stage:'problem', difficulty:3,
+    vector:[-0.55,0.82,0.32],
+    evidence:'通过冗余编码保护未知量子态，使可扩展量子计算从物理保真度问题转为编码与阈值问题。',
+    sources:[{short:'Shor 1995', title:'Scheme for reducing decoherence in quantum computer memory', venue:'Phys. Rev. A', year:1995, doi:'10.1103/PhysRevA.52.R2493', url:'https://link.aps.org/doi/10.1103/PhysRevA.52.R2493'}]
+  },
+  {
+    id:'node_604', label:'表面码', domain:'qec', stage:'formalism', difficulty:4,
+    vector:[-0.22,0.92,0.58],
+    evidence:'二维局域校验与拓扑保护降低工程连接复杂度，成为主流容错路线。',
+    sources:[{short:'Kitaev 2003', title:'Fault-tolerant quantum computation by anyons', venue:'Annals of Physics', year:2003, doi:'10.1016/S0003-4916(02)00018-0', url:'https://arxiv.org/abs/quant-ph/9707021'}]
+  },
+  {
+    id:'node_302', label:'逻辑量子比特实验', domain:'qec', stage:'implementation', difficulty:5,
+    vector:[0.28,0.96,0.54],
+    evidence:'更大距离表面码逻辑比特开始优于较小距离编码，显示纠错扩展的实验门槛正在被触及。',
+    sources:[{short:'Google Quantum AI 2023', title:'Suppressing quantum errors by scaling a surface code logical qubit', venue:'Nature', year:2023, doi:'10.1038/s41586-022-05434-1', url:'https://www.nature.com/articles/s41586-022-05434-1'}]
+  },
+  {
+    id:'node_213', label:'DiVincenzo判据', domain:'hardware', stage:'problem', difficulty:2,
+    vector:[-0.86,-0.12,0.42],
+    evidence:'把物理实现拆成初始化、可控门、长相干、测量和互连等工程条件。',
+    sources:[{short:'DiVincenzo 2000', title:'The Physical Implementation of Quantum Computation', venue:'Fortschritte der Physik', year:2000, url:'https://arxiv.org/abs/quant-ph/0002077'}]
+  },
+  {
+    id:'node_201', label:'超导Transmon', domain:'hardware', stage:'implementation', difficulty:3,
+    vector:[0.12,-0.72,0.78],
+    evidence:'Transmon 通过提高 EJ/EC 指数级降低电荷噪声敏感性，成为超导量子芯片主流设计。',
+    sources:[{short:'Koch 2007', title:'Charge-insensitive qubit design derived from the Cooper pair box', venue:'Phys. Rev. A', year:2007, doi:'10.1103/PhysRevA.76.042319', url:'https://link.aps.org/doi/10.1103/PhysRevA.76.042319'}]
+  },
+  {
+    id:'node_202', label:'离子阱平台', domain:'hardware', stage:'implementation', difficulty:3,
+    vector:[0.48,-0.64,0.62],
+    evidence:'电磁阱和激光操控给出高保真门与长相干时间，是容错候选平台之一。',
+    sources:[{short:'Häffner 2008', title:'Quantum computing with trapped ions', venue:'Physics Reports', year:2008, doi:'10.1016/j.physrep.2008.09.003', url:'https://www.sciencedirect.com/science/article/pii/S0370157308003463'}]
+  },
+  {
+    id:'node_203', label:'光量子优势', domain:'hardware', stage:'implementation', difficulty:4,
+    vector:[0.84,-0.42,0.32],
+    evidence:'高维高斯玻色采样展示光量子平台在特定采样任务上的计算优势。',
+    sources:[{short:'Zhong 2020', title:'Quantum computational advantage using photons', venue:'Science', year:2020, doi:'10.1126/science.abe8770', url:'https://www.science.org/doi/10.1126/science.abe8770'}]
+  },
+  {
+    id:'node_204', label:'中性原子阵列', domain:'hardware', stage:'implementation', difficulty:4,
+    vector:[0.72,-0.78,-0.02],
+    evidence:'可编程 2D Rydberg 原子阵列把大规模量子模拟与可重构连接结合起来。',
+    sources:[{short:'Ebadi 2021', title:'Quantum phases of matter on a 256-atom programmable quantum simulator', venue:'Nature', year:2021, doi:'10.1038/s41586-021-03582-4', url:'https://www.nature.com/articles/s41586-021-03582-4'}]
+  },
+  {
+    id:'node_406', label:'量子化学模拟', domain:'application', stage:'application', difficulty:3,
+    vector:[0.98,-0.08,-0.28],
+    evidence:'化学和材料哈密顿量天然量子化，是从 Feynman 模拟思想到 VQE/NISQ 的直接应用。',
+    sources:[{short:'Aspuru-Guzik 2005', title:'Simulated Quantum Computation of Molecular Energies', venue:'Science', year:2005, doi:'10.1126/science.1113479', url:'https://www.science.org/doi/10.1126/science.1113479'}]
+  },
+  {
+    id:'node_404', label:'量子机器学习', domain:'application', stage:'application', difficulty:4,
+    vector:[0.86,0.16,-0.44],
+    evidence:'量子核、参数化量子线路和量子神经网络把模型表达能力与硬件可训练性连成开放问题。',
+    sources:[{short:'Biamonte 2017', title:'Quantum machine learning', venue:'Nature', year:2017, doi:'10.1038/nature23474', url:'https://www.nature.com/articles/nature23474'}]
+  },
+  {
+    id:'node_401', label:'量子密码学', domain:'security', stage:'application', difficulty:2,
+    vector:[-0.72,-0.28,-0.66],
+    evidence:'BB84 把不可克隆和测量扰动转化为密钥分发安全机制。',
+    sources:[{short:'Bennett 1984', title:'Quantum cryptography: Public key distribution and coin tossing', venue:'IEEE International Conference', year:1984, url:'https://research.ibm.com/publications/quantum-cryptography-public-key-distribution-and-coin-tossing'}]
+  },
+  {
+    id:'node_602', label:'后量子密码', domain:'security', stage:'application', difficulty:3,
+    vector:[-0.36,-0.76,-0.66],
+    evidence:'Shor 威胁推动基于格、哈希、码等抗量子公钥算法标准化。',
+    sources:[{short:'NIST PQC 2024', title:'Post-Quantum Cryptography Standardization', venue:'NIST', year:2024, url:'https://csrc.nist.gov/projects/post-quantum-cryptography'}]
+  },
+  {
+    id:'node_701', label:'量子软件栈', domain:'software', stage:'infrastructure', difficulty:2,
+    vector:[0.18,-0.96,-0.36],
+    evidence:'SDK、IR、编译与云访问把算法论文转成可运行线路和硬件作业。',
+    sources:[{short:'Qiskit 2021', title:'Qiskit: An Open-source Framework for Quantum Computing', venue:'Zenodo', year:2021, doi:'10.5281/zenodo.2562111', url:'https://doi.org/10.5281/zenodo.2562111'}]
+  }
+];
+
+const ATTACK_PATHS = [
+  {id:'path_algorithms', name:'算法突破路线', color:'#EF4444', desc:'从可计算性问题到可证明量子加速', steps:['node_506','node_105','node_101','node_102','node_107']},
+  {id:'path_nisq', name:'NISQ应用路线', color:'#34D399', desc:'噪声约束下的变分算法与近期应用', steps:['node_012','node_103','node_104','node_406','node_404']},
+  {id:'path_qec', name:'纠错容错路线', color:'#A855F7', desc:'从纠错码到表面码逻辑量子比特', steps:['node_904','node_604','node_302','node_201']},
+  {id:'path_hardware', name:'硬件实现路线', color:'#38BDF8', desc:'从实现判据到多平台工程化', steps:['node_213','node_201','node_202','node_203','node_204']},
+  {id:'path_security', name:'密码攻防路线', color:'#FBBF24', desc:'Shor威胁、QKD防御与PQC迁移', steps:['node_401','node_101','node_602']}
+];
+
+// 原始数据来源开放状态：所有用户均可查看完整 IMA 引用内容。
+let isPaidUser = true;
+
+// 闪烁节点管理
+const flashingNodes = new Map(); // nodeId -> { startTime, duration, color }
+
+// ============================================================
+// 3D 场景
+// ============================================================
+const container = document.getElementById('globe-panel');
+
+// 确保容器有有效尺寸
+function getContainerSize() {
+  const w = container.clientWidth || container.offsetWidth || window.innerWidth * 0.6;
+  const h = container.clientHeight || container.offsetHeight || window.innerHeight;
+  return { w: Math.max(w, 300), h: Math.max(h, 400) };
+}
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x050a14);
+scene.fog = new THREE.FogExp2(0x050a14, 0.00006);
+
+const sz = getContainerSize();
+const camera = new THREE.PerspectiveCamera(50, sz.w/sz.h, 0.5, 50);
+camera.position.set(3.5, 2, 5);
+camera.lookAt(0,0,0);
+
+const renderer = new THREE.WebGLRenderer({antialias:true, alpha:true});
+renderer.setSize(sz.w, sz.h);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
+container.appendChild(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.minDistance = 3;
+controls.maxDistance = 12;
+controls.target.set(0,0,0);
+controls.autoRotate = true;
+controls.autoRotateSpeed = 2.0;  // 较快的自动旋转速度
+
+// Lighting
+scene.add(new THREE.AmbientLight(0x1a3050, 2));
+const sunLight = new THREE.DirectionalLight(0x6080c0, 3);
+sunLight.position.set(5,3,2);
+scene.add(sunLight);
+const fillLight = new THREE.DirectionalLight(0x302050, 1.5);
+fillLight.position.set(-3,-1,-2);
+scene.add(fillLight);
+
+// Starfield
+const starsGeo = new THREE.BufferGeometry();
+const starsCount = 2500;
+const starsPos = new Float32Array(starsCount*3);
+for(let i=0;i<starsCount;i++){
+  const r=15+Math.random()*15, theta=Math.random()*Math.PI*2, phi=Math.acos(2*Math.random()-1);
+  starsPos[i*3]=r*Math.sin(phi)*Math.cos(theta);
+  starsPos[i*3+1]=r*Math.sin(phi)*Math.sin(theta);
+  starsPos[i*3+2]=r*Math.cos(phi);
+}
+starsGeo.setAttribute('position',new THREE.BufferAttribute(starsPos,3));
+const stars = new THREE.Points(starsGeo, new THREE.PointsMaterial({color:0x6088c0,size:0.03,blending:THREE.AdditiveBlending,depthWrite:false,transparent:true,opacity:0.7}));
+scene.add(stars);
+
+// Globe
+const globeRadius = 1.8;
+const globeGroup = new THREE.Group();
+scene.add(globeGroup);
+
+// Core sphere
+const globe = new THREE.Mesh(
+  new THREE.SphereGeometry(globeRadius-0.02,64,48),
+  new THREE.MeshPhongMaterial({color:0x0a1a3a,emissive:0x020810,specular:0x1a3050,shininess:30,transparent:true,opacity:0.6})
+);
+globeGroup.add(globe);
+
+// Wireframe
+globeGroup.add(new THREE.Mesh(
+  new THREE.SphereGeometry(globeRadius,48,24),
+  new THREE.MeshBasicMaterial({color:0x1a3a5c,wireframe:true,transparent:true,opacity:0.1})
+));
+
+// Latitude/Longitude lines
+function createLatLine(latDeg){
+  const phi=Math.PI/2-(latDeg*Math.PI/180), r=globeRadius*Math.cos(phi), y=globeRadius*Math.sin(phi);
+  const pts=[];
+  for(let i=0;i<=128;i++){const t=(i/128)*Math.PI*2;pts.push(new THREE.Vector3(r*Math.cos(t),y,r*Math.sin(t)))}
+  return new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),new THREE.LineBasicMaterial({color:0x1a3050,transparent:true,opacity:0.2}));
+}
+function createLonLine(lonDeg){
+  const t=lonDeg*Math.PI/180, pts=[];
+  for(let i=0;i<=128;i++){const p=(i/128)*Math.PI;pts.push(new THREE.Vector3(globeRadius*Math.sin(p)*Math.cos(t),globeRadius*Math.cos(p),globeRadius*Math.sin(p)*Math.sin(t)))}
+  return new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),new THREE.LineBasicMaterial({color:0x1a3050,transparent:true,opacity:0.2}));
+}
+for(let lat=-60;lat<=60;lat+=30) globeGroup.add(createLatLine(lat));
+for(let lon=-150;lon<=180;lon+=30) globeGroup.add(createLonLine(lon));
+
+// Atmosphere ring
+const ring = new THREE.Mesh(new THREE.TorusGeometry(globeRadius+0.05,0.012,16,100),new THREE.MeshBasicMaterial({color:0x3060a0,transparent:true,opacity:0.15}));
+ring.rotation.x=Math.PI/2;
+globeGroup.add(ring);
+
+// ============================================================
+// 节点渲染
+// ============================================================
+const conceptGroup = new THREE.Group();
+scene.add(conceptGroup);
+const satelliteGroup = new THREE.Group();
+scene.add(satelliteGroup);
+const edgeGroup = new THREE.Group();
+scene.add(edgeGroup);
+const pathGroup = new THREE.Group();
+scene.add(pathGroup);
+
+const nodeMeshes = [];
+const nodeIdToMesh = {};
+const nodeIdToLabel = {};
+const nodeIdToData = {};
+const labelSprites = [];
+const highlightGroup = new THREE.Group();
+scene.add(highlightGroup);
+const researchNodeById = {};
+const researchRenderIdByOriginalId = {};
+let researchPathLines = [];
+let activePathId = null;
+let mapLang = 'zh';
+
+// 用于推演闪烁的特效组
+const flashGroup = new THREE.Group();
+scene.add(flashGroup);
+
+// Fibonacci sphere distribution for node placement
+function fibSphere(i, total, radius) {
+  const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+  const y = 1 - (i / (total - 1 || 1)) * 2;
+  const radiusAtY = Math.sqrt(Math.max(0, 1 - y * y));
+  const theta = goldenAngle * i;
+  return new THREE.Vector3(
+    Math.cos(theta) * radiusAtY * radius,
+    y * radius,
+    Math.sin(theta) * radiusAtY * radius
+  );
+}
+
+function createLabel(nodeId, color) {
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  canvas.width = 320; canvas.height = 72;
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.minFilter = THREE.LinearFilter;
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({map:tex,transparent:true,depthWrite:false,opacity:0.85}));
+  sprite.scale.set(0.74, 0.17, 1);
+  sprite.userData = { type: 'label', nodeId, canvas, ctx, texture: tex, color: color || '#d0d8e0' };
+  updateLabelSprite(sprite);
+  labelSprites.push(sprite);
+  return sprite;
+}
+
+function updateLabelSprite(sprite) {
+  const { canvas, ctx, texture, color, nodeId } = sprite.userData;
+  const text = getNodeDisplayName(nodeId, mapLang);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = color || '#d0d8e0';
+  ctx.font = 'bold 24px "PingFang SC","Microsoft YaHei",Arial,sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const maxLen = mapLang === 'en' ? 13 : 9;
+  const display = text.length > maxLen ? text.substring(0, maxLen - 1) + '…' : text;
+  ctx.fillText(display, canvas.width / 2, canvas.height / 2);
+  texture.needsUpdate = true;
+}
+
+function updateAllLabels() {
+  labelSprites.forEach(updateLabelSprite);
+  Object.entries(nodeIdToMesh).forEach(([id, mesh]) => {
+    mesh.userData.name = getNodeDisplayName(id, mapLang);
+  });
+}
+
+function hasCJK(text) {
+  return /[\u4e00-\u9fff]/.test(text || '');
+}
+
+function stripParen(text) {
+  return (text || '').replace(/\s*\([^)]*\)\s*/g, '').trim();
+}
+
+function splitNodeLabel(label) {
+  const text = label || '';
+  const paren = text.match(/^(.*?)\s*\(([^)]*)\)\s*$/);
+  if (paren) {
+    const before = paren[1].trim();
+    const inside = paren[2].trim();
+    if (hasCJK(inside) && !hasCJK(before)) return { zh: inside, en: before };
+    if (hasCJK(before) && !hasCJK(inside)) return { zh: before || inside, en: inside || before };
+    if (!hasCJK(before) && !hasCJK(inside)) {
+      return { zh: ZH_LABEL_OVERRIDES[text] || ZH_LABEL_OVERRIDES[before] || text, en: text };
+    }
+  }
+  if (!hasCJK(text)) return { zh: ZH_LABEL_OVERRIDES[text] || text, en: text };
+  return { zh: stripParen(text), en: EN_LABEL_OVERRIDES[text] || EN_LABEL_OVERRIDES[stripParen(text)] || stripParen(text) };
+}
+
+function getNodeDisplayName(nodeId, lang = mapLang) {
+  const node = nodeIdToData[nodeId];
+  if (!node) return nodeId;
+  const labels = node.displayLabels || splitNodeLabel(node.label || node.name || nodeId);
+  if (lang !== 'en') return sanitizeChineseLabel(labels.zh, node);
+  return sanitizeEnglishLabel(labels.en, node);
+}
+
+function sanitizeEnglishLabel(label, node) {
+  const value = (label || '').trim();
+  if (value && !hasCJK(value)) return value;
+  const readableId = (node.id || 'node').replace(/^research_/, '').replace(/^node_/, '');
+  return `${EN_TYPE_LABELS[node.type] || 'Node'} ${readableId}`;
+}
+
+function sanitizeChineseLabel(label, node) {
+  const value = (label || '').trim();
+  const known = ZH_LABEL_OVERRIDES[value] || ZH_LABEL_OVERRIDES[node.label] || ZH_LABEL_OVERRIDES[stripParen(value)];
+  if (known) return known;
+  if (value && hasCJK(value)) return value;
+  const readableId = (node.id || 'node').replace(/^research_/, '').replace(/^node_/, '');
+  return `${ZH_TYPE_LABELS[node.type] || '节点'} ${readableId}`;
+}
+
+function getTypeLabel(type) {
+  return mapLang === 'en' ? (EN_TYPE_LABELS[type] || type) : (ZH_TYPE_LABELS[type] || TYPE_LABELS[type] || type);
+}
+
+async function loadGraphAndRender() {
+  try {
+    const resp = await fetch('/api/graph/full');
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    GRAPH_DATA = await resp.json();
+  } catch(e) {
+    try {
+      const resp = await fetch('./graph_data.json');
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      GRAPH_DATA = await resp.json();
+    } catch(e2) {
+      console.warn('Using research-map-only fallback:', e2);
+      GRAPH_DATA = {
+        nodes: RESEARCH_NODES.map(n => ({
+          id:n.id,
+          label:n.label,
+          type:n.domain,
+          description:n.evidence,
+          properties:{ importance: Math.min(5, n.difficulty + 1) }
+        })),
+        edges: ATTACK_PATHS.flatMap(path => path.steps.slice(1).map((id, i) => ({
+          source:path.steps[i],
+          target:id,
+          label:path.name,
+          weight:3
+        })))
+      };
+    }
+  }
+
+  window.GRAPH_DATA = GRAPH_DATA;
+  renderResearchMap();
+  hideInitialLoading();
+}
+
+function vectorToGlobe(vector, lift = 0) {
+  const v = new THREE.Vector3(vector[0], vector[1], vector[2]);
+  if (v.length() < 0.01) return new THREE.Vector3(0, globeRadius + lift, 0);
+  return v.normalize().multiplyScalar(globeRadius + lift);
+}
+
+function renderResearchMap() {
+  conceptGroup.clear();
+  satelliteGroup.clear();
+  edgeGroup.clear();
+  pathGroup.clear();
+  highlightGroup.clear();
+  nodeMeshes.length = 0;
+  labelSprites.length = 0;
+  Object.keys(nodeIdToMesh).forEach(k => delete nodeIdToMesh[k]);
+  Object.keys(nodeIdToLabel).forEach(k => delete nodeIdToLabel[k]);
+  Object.keys(nodeIdToData).forEach(k => delete nodeIdToData[k]);
+  Object.keys(researchNodeById).forEach(k => delete researchNodeById[k]);
+  Object.keys(researchRenderIdByOriginalId).forEach(k => delete researchRenderIdByOriginalId[k]);
+  researchPathLines = [];
+
+  const graphNodes = (GRAPH_DATA?.nodes || []).map(n => ({ ...n, isResearchAnchor: false }));
+  const graphMap = {};
+  graphNodes.forEach(n => { graphMap[n.id] = n; });
+  const mapNodes = [...graphNodes];
+
+  RESEARCH_NODES.forEach(rn => {
+    const graphNode = graphMap[rn.id];
+    const graphZh = graphNode ? splitNodeLabel(graphNode.label).zh : '';
+    const conflicts = graphNode && graphZh && graphZh !== rn.label && !graphZh.includes(rn.label) && !rn.label.includes(graphZh);
+    const renderId = conflicts ? `research_${rn.id}` : rn.id;
+    researchRenderIdByOriginalId[rn.id] = renderId;
+    researchNodeById[renderId] = { ...rn, renderId, originalId: rn.id };
+    if (conflicts || !graphNode) {
+      mapNodes.push({
+        id: renderId,
+        label: rn.label,
+        type: rn.domain,
+        description: rn.evidence,
+        properties: { importance: Math.min(5, (rn.difficulty || 3) + 1) },
+        isResearchAnchor: true,
+        researchOriginalId: rn.id
+      });
+    }
+  });
+
+  const graphReportCount = (GRAPH_DATA?.nodes || []).filter(n => n.type === 'report').length;
+  const sourceCount = new Set(RESEARCH_NODES.flatMap(n => n.sources.map(s => s.short))).size + graphReportCount;
+  const satelliteTypes = new Set(['company','organization','person','tool','material','report']);
+  const satelliteNodes = mapNodes.filter(n => satelliteTypes.has(n.type) && !researchNodeById[n.id]);
+  const surfaceNodes = mapNodes.filter(n => !satelliteNodes.includes(n));
+  const statsEl = document.getElementById('globe-stats');
+  statsEl.innerHTML = `
+    <div class="stat-pill"><span class="num">${GRAPH_DATA?.nodes?.length || mapNodes.length}</span>图谱节点</div>
+    <div class="stat-pill"><span class="num">${satelliteNodes.length}</span>卫星</div>
+    <div class="stat-pill"><span class="num">${ATTACK_PATHS.length}</span>攻击路径</div>
+    <div class="stat-pill"><span class="num">${sourceCount}</span>原始来源</div>
+  `;
+
+  renderPathDock();
+
+  surfaceNodes.forEach((node, i) => {
+    const rn = researchNodeById[node.id];
+    const pos = rn ? vectorToGlobe(rn.vector, 0.04) : fibSphere(i, surfaceNodes.length, globeRadius + 0.04);
+    addKnowledgeNode(node, pos, false);
+  });
+
+  satelliteNodes.forEach((node, i) => {
+    const pos = fibSphere(i, satelliteNodes.length, 2.52 + (i % 5) * 0.11);
+    addKnowledgeNode(node, pos, true);
+  });
+
+  addSatelliteOrbits();
+
+  const nodeMap = {};
+  mapNodes.forEach(n => { nodeMap[n.id] = n; });
+  (GRAPH_DATA?.edges || [])
+    .filter(e => nodeIdToMesh[e.source] && nodeIdToMesh[e.target])
+    .filter(e => {
+      const s = nodeMap[e.source], t = nodeMap[e.target];
+      const si = s?.properties?.importance || 3, ti = t?.properties?.importance || 3;
+      return (e.weight || 1) >= 3 || (si >= 4 && ti >= 4);
+    })
+    .slice(0, 340)
+    .forEach(e => {
+      const sMesh = nodeIdToMesh[e.source], tMesh = nodeIdToMesh[e.target];
+      const color = TYPE_COLORS[sMesh.userData.nodeType] || sMesh.userData.color || 0x1a3a5c;
+      drawEdge(sMesh.position, tMesh.position, color, 0.11, edgeGroup);
+    });
+
+  ATTACK_PATHS.forEach(path => {
+    const points = path.steps.map(id => nodeIdToMesh[researchRenderIdByOriginalId[id] || id]?.position).filter(Boolean);
+    if (points.length < 2) return;
+    for (let i = 1; i < points.length; i++) {
+      const line = drawEdge(points[i-1], points[i], new THREE.Color(path.color), 0.42, pathGroup, true);
+      if (line) researchPathLines.push({ pathId:path.id, line });
+    }
+  });
+  updateAllLabels();
+  showResearchDetail(null);
+}
+
+function addKnowledgeNode(node, pos, isSatellite) {
+  const rn = researchNodeById[node.id];
+  const type = rn?.domain || node.type || 'concept';
+  const color = rn ? (DOMAIN_COLORS[rn.domain] || 0x6080a0) : (TYPE_COLORS[type] || 0x6080a0);
+  const importance = rn?.difficulty || node.properties?.importance || 3;
+  const baseRadius = isSatellite ? 0.026 + importance * 0.005 : 0.022 + importance * 0.006;
+  const labels = splitNodeLabel(node.label);
+  if (rn) {
+    labels.zh = rn.label;
+    labels.en = EN_LABEL_OVERRIDES[rn.label] || labels.en;
+  }
+  const nodeData = { ...node, displayLabels: labels, isSatellite, research: rn || null };
+  nodeIdToData[node.id] = nodeData;
+
+  const mesh = new THREE.Mesh(
+    new THREE.SphereGeometry(baseRadius, 16, 12),
+    new THREE.MeshStandardMaterial({
+      color, emissive: color, emissiveIntensity: isSatellite ? 0.55 : 0.35 + importance * 0.08,
+      roughness: 0.34, metalness: 0.18
+    })
+  );
+  mesh.position.copy(pos);
+  mesh.userData = {
+    type:'concept',
+    nodeId:node.id,
+    name:labels[mapLang],
+    nodeType:type,
+    importance,
+    originalEmissive:isSatellite ? 0.55 : 0.35 + importance * 0.08,
+    color,
+    isSatellite
+  };
+
+  const halo = new THREE.Mesh(
+    new THREE.SphereGeometry(baseRadius * (isSatellite ? 2.3 : 1.75), 12, 8),
+    new THREE.MeshBasicMaterial({color, transparent:true, opacity:isSatellite ? 0.16 : 0.1, depthWrite:false})
+  );
+  mesh.add(halo);
+  (isSatellite ? satelliteGroup : conceptGroup).add(mesh);
+  nodeMeshes.push(mesh);
+  nodeIdToMesh[node.id] = mesh;
+  nodeIdToLabel[node.id] = node.label;
+
+  const label = createLabel(node.id, '#' + new THREE.Color(color).getHexString());
+  const labelPos = pos.clone().normalize().multiplyScalar(pos.length() + (isSatellite ? 0.13 : 0.14));
+  label.position.copy(labelPos);
+  (isSatellite ? satelliteGroup : conceptGroup).add(label);
+}
+
+function addSatelliteOrbits() {
+  const orbitMat = new THREE.LineBasicMaterial({color:0x406080, transparent:true, opacity:0.16});
+  [2.52, 2.74, 2.96].forEach((radius, idx) => {
+    const pts = [];
+    for (let i = 0; i <= 192; i++) {
+      const a = (i / 192) * Math.PI * 2;
+      pts.push(new THREE.Vector3(Math.cos(a) * radius, 0, Math.sin(a) * radius));
+    }
+    const orbit = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), orbitMat.clone());
+    orbit.rotation.x = idx === 0 ? 0.55 : idx === 1 ? -0.42 : 1.08;
+    orbit.rotation.z = idx === 0 ? 0.2 : idx === 1 ? -0.35 : 0.65;
+    satelliteGroup.add(orbit);
+  });
+}
+
+// ============================================================
+// 边绘制：区分弧线（通过地球边缘）和内部直线
+// ============================================================
+function drawEdge(from, to, color, opacity, group, glow = false) {
+  // 计算两点之间的角距离
+  const fromNorm = from.clone().normalize();
+  const toNorm = to.clone().normalize();
+  const dotProduct = fromNorm.dot(toNorm);
+  const angle = Math.acos(Math.max(-1, Math.min(1, dotProduct)));
+
+  if (angle > Math.PI / 3) {
+    // 大角度：通过地球边缘的弧线（外部弧）
+    const mid = from.clone().add(to).multiplyScalar(0.5);
+    const midLen = mid.length();
+    if(midLen > 0.01) {
+      // 弧线控制点向外推，经过地球边缘外部
+      mid.normalize().multiplyScalar(globeRadius + 0.15 + angle * 0.2);
+    }
+    const curve = new THREE.QuadraticBezierCurve3(from, mid, to);
+    const pts = curve.getPoints(32);
+    const lineGeo = new THREE.BufferGeometry().setFromPoints(pts);
+    const lineMat = new THREE.LineBasicMaterial({color, transparent:true, opacity});
+    const line = new THREE.Line(lineGeo, lineMat);
+    group.add(line);
+
+    // 发光效果：额外绘制一条更宽的半透明线
+    if (glow || opacity > 0.4) {
+      const glowMat = new THREE.LineBasicMaterial({color, transparent:true, opacity: opacity * 0.3, linewidth: 2});
+      group.add(new THREE.Line(lineGeo.clone(), glowMat));
+    }
+    return line;
+  } else {
+    // 小角度：通过地球空间内部的直线
+    const lineGeo = new THREE.BufferGeometry().setFromPoints([from, to]);
+    const lineMat = new THREE.LineBasicMaterial({color, transparent:true, opacity});
+    group.add(new THREE.Line(lineGeo, lineMat));
+    const line = group.children[group.children.length - 1];
+
+    // 发光效果
+    if (glow || opacity > 0.4) {
+      const glowMat = new THREE.LineBasicMaterial({color, transparent:true, opacity: opacity * 0.3, linewidth: 2});
+      group.add(new THREE.Line(lineGeo.clone(), glowMat));
+    }
+    return line;
+  }
+}
+
+// ============================================================
+// 3D 交互
+// ============================================================
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+let hoveredMesh = null;
+let selectedNodeId = null;
+
+renderer.domElement.addEventListener('click', (e) => {
+  const rect = renderer.domElement.getBoundingClientRect();
+  mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+  mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(mouse, camera);
+  const hits = raycaster.intersectObjects(nodeMeshes);
+  if (hits.length > 0 && hits[0].object.userData.type === 'concept') {
+    const nodeId = hits[0].object.userData.nodeId;
+    highlightNode(nodeId);
+    // Smooth fly to
+    const target = hits[0].object.position.clone();
+    controls.target.lerp(target, 0.3);
+  } else {
+    // 点击空白取消选中
+    highlightNode(null);
+  }
+});
+
+renderer.domElement.addEventListener('mousemove', (e) => {
+  const rect = renderer.domElement.getBoundingClientRect();
+  mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+  mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(mouse, camera);
+  const hits = raycaster.intersectObjects(nodeMeshes);
+  if (hits.length > 0 && hits[0].object.userData.type === 'concept') {
+    renderer.domElement.style.cursor = 'pointer';
+    const obj = hits[0].object;
+    if (hoveredMesh && hoveredMesh !== obj) hoveredMesh.material.emissiveIntensity = hoveredMesh.userData.originalEmissive;
+    obj.material.emissiveIntensity = 1.5;
+    hoveredMesh = obj;
+    const rn = researchNodeById[obj.userData.nodeId];
+    showTooltip(e, obj.userData.name, rn ? `${STAGE_LABELS[rn.stage]} · 难度${rn.difficulty}` : obj.userData.nodeType);
+  } else {
+    renderer.domElement.style.cursor = 'default';
+    if (hoveredMesh) { hoveredMesh.material.emissiveIntensity = hoveredMesh.userData.originalEmissive; hoveredMesh=null; }
+    hideTooltip();
+  }
+});
+
+function highlightNode(nodeId) {
+  // Reset all
+  Object.values(nodeIdToMesh).forEach(m => {
+    m.scale.set(1,1,1);
+    m.material.emissiveIntensity = m.userData.originalEmissive;
+  });
+  highlightGroup.clear();
+
+  if (!nodeId || !nodeIdToMesh[nodeId]) {
+    selectedNodeId = null;
+    showResearchDetail(null);
+    return;
+  }
+  selectedNodeId = nodeId;
+  const mesh = nodeIdToMesh[nodeId];
+  mesh.scale.set(1.8,1.8,1.8);
+  mesh.material.emissiveIntensity = 2.0;
+  showResearchDetail(researchNodeById[nodeId] || nodeIdToData[nodeId] || null);
+
+  const relatedPaths = ATTACK_PATHS.filter(path => path.steps.some(id => (researchRenderIdByOriginalId[id] || id) === nodeId || id === nodeId));
+  const connectedIds = new Set([nodeId]);
+  relatedPaths.forEach(path => path.steps.forEach(id => connectedIds.add(id)));
+  if (GRAPH_DATA?.edges) {
+    GRAPH_DATA.edges.forEach(e => {
+      if (e.source === nodeId && nodeIdToMesh[e.target]) connectedIds.add(e.target);
+      if (e.target === nodeId && nodeIdToMesh[e.source]) connectedIds.add(e.source);
+    });
+  }
+  connectedIds.forEach(cid => {
+    if (cid === nodeId) return;
+    const cm = nodeIdToMesh[researchRenderIdByOriginalId[cid] || cid];
+    if (cm) { cm.material.emissiveIntensity = 1.05; cm.scale.set(1.22,1.22,1.22); }
+  });
+  if (GRAPH_DATA?.edges) {
+    GRAPH_DATA.edges
+      .filter(e => e.source === nodeId || e.target === nodeId)
+      .slice(0, 42)
+      .forEach(e => {
+        const sM = nodeIdToMesh[e.source], tM = nodeIdToMesh[e.target];
+        if (!sM || !tM) return;
+        drawEdge(sM.position, tM.position, mesh.userData.color || 0x60A5FA, 0.54, highlightGroup, true);
+      });
+  }
+  relatedPaths.forEach(path => {
+    for (let i = 1; i < path.steps.length; i++) {
+      const sM = nodeIdToMesh[researchRenderIdByOriginalId[path.steps[i-1]] || path.steps[i-1]];
+      const tM = nodeIdToMesh[researchRenderIdByOriginalId[path.steps[i]] || path.steps[i]];
+      if (!sM || !tM) continue;
+      const isPrimaryEdge = path.steps[i-1] === nodeId || path.steps[i] === nodeId;
+      drawEdge(sM.position, tM.position, new THREE.Color(path.color), isPrimaryEdge ? 0.92 : 0.45, highlightGroup, true);
+    }
+  });
+}
+
+function renderPathDock() {
+  const dock = document.getElementById('path-dock');
+  if (!dock) return;
+  dock.innerHTML = ATTACK_PATHS.map(path =>
+    `<button class="path-chip" style="--chip-color:${path.color}" data-path-id="${path.id}" title="${escapeHTML(path.desc)}">${escapeHTML(path.name)}</button>`
+  ).join('');
+  dock.querySelectorAll('.path-chip').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const nextPath = activePathId === btn.dataset.pathId ? null : btn.dataset.pathId;
+      selectAttackPath(nextPath);
+    });
+  });
+}
+
+function selectAttackPath(pathId) {
+  activePathId = pathId;
+  document.querySelectorAll('.path-chip').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.pathId === pathId);
+  });
+  researchPathLines.forEach(item => {
+    item.line.material.opacity = !pathId || item.pathId === pathId ? 0.62 : 0.08;
+  });
+  Object.values(nodeIdToMesh).forEach(mesh => {
+    mesh.scale.set(1,1,1);
+    mesh.material.emissiveIntensity = mesh.userData.originalEmissive;
+  });
+  highlightGroup.clear();
+  if (!pathId) return;
+  const path = ATTACK_PATHS.find(p => p.id === pathId);
+  if (!path) return;
+  path.steps.forEach((id, idx) => {
+    const mesh = nodeIdToMesh[researchRenderIdByOriginalId[id] || id];
+    if (!mesh) return;
+    const s = idx === 0 || idx === path.steps.length - 1 ? 1.45 : 1.25;
+    mesh.scale.set(s,s,s);
+    mesh.material.emissiveIntensity = 1.6;
+  });
+  showPathDetail(path);
+}
+
+function showPathDetail(path) {
+  const el = document.getElementById('research-detail');
+  if (!el || !path) return;
+  const steps = path.steps.map((id, i) => {
+    const resolvedId = researchRenderIdByOriginalId[id] || id;
+    const node = researchNodeById[resolvedId] || nodeIdToData[resolvedId];
+    if (!node) return '';
+    const name = researchNodeById[resolvedId] ? getResearchDisplayName(node) : getNodeDisplayName(resolvedId, mapLang);
+    const stage = researchNodeById[resolvedId] ? (STAGE_LABELS[node.stage] || node.stage) : getTypeLabel(node.type);
+    return `<div class="source-link" style="color:#e2e8f0"><span style="color:${path.color};font-weight:700">${i+1}.</span> ${escapeHTML(name)} <span class="muted">/${escapeHTML(stage)}</span></div>`;
+  }).join('');
+  el.innerHTML = `
+    <h3 style="color:${path.color}">${escapeHTML(path.name)}</h3>
+    <div class="muted">${escapeHTML(path.desc)}</div>
+    <div class="section-title">研究演进序列</div>
+    ${steps}
+  `;
+}
+
+function showResearchDetail(node) {
+  const el = document.getElementById('research-detail');
+  if (!el) return;
+  if (!node) {
+    el.innerHTML = mapLang === 'en'
+      ? `<h3>Formal Research Map</h3><div class="muted">Click a node to inspect evidence, sources, difficulty and research evolution paths. Outer nodes are satellite-style entities such as companies, tools, people and institutions.</div>`
+      : `<h3>正式研究地图</h3><div class="muted">点击地球节点查看原始论文、证据链、难度和研究演进路径。外层节点是公司、工具、人物、机构等卫星式实体。</div>`;
+    return;
+  }
+  if (!node.sources) {
+    showGenericNodeDetail(node);
+    return;
+  }
+  const color = '#' + (DOMAIN_COLORS[node.domain] || 0x6080a0).toString(16).padStart(6, '0');
+  const paths = ATTACK_PATHS.filter(path => path.steps.some(id => (researchRenderIdByOriginalId[id] || id) === node.renderId));
+  const pathText = paths.length ? paths.map(path => path.name).join(' / ') : '未归入主路径';
+  const sources = node.sources.map(src => {
+    const meta = [src.venue, src.year, src.doi ? `DOI: ${src.doi}` : ''].filter(Boolean).join(' · ');
+    return `<a class="source-link" href="${src.url}" target="_blank" rel="noreferrer">
+      <b>${escapeHTML(src.short)}</b> ${escapeHTML(src.title)}<br><span class="muted">${escapeHTML(meta)}</span>
+    </a>`;
+  }).join('');
+  el.innerHTML = `
+    <h3 style="color:${color}">${escapeHTML(getResearchDisplayName(node))}</h3>
+    <div class="tag-row">
+      <span class="tag">${escapeHTML(STAGE_LABELS[node.stage] || node.stage)}</span>
+      <span class="tag">难度 ${node.difficulty} · ${escapeHTML(DIFFICULTY_LABELS[node.difficulty] || '')}</span>
+      <span class="tag">${escapeHTML(pathText)}</span>
+    </div>
+    <div class="section-title">证据</div>
+    <div class="muted">${escapeHTML(node.evidence)}</div>
+    <div class="section-title">原始来源</div>
+    ${sources}
+  `;
+}
+
+function getResearchDisplayName(node) {
+  if (mapLang === 'en') return sanitizeEnglishLabel(EN_LABEL_OVERRIDES[node.label] || splitNodeLabel(node.label).en || node.label, node);
+  return node.label;
+}
+
+function showGenericNodeDetail(node) {
+  const el = document.getElementById('research-detail');
+  const mesh = nodeIdToMesh[node.id];
+  const color = '#' + new THREE.Color(mesh?.userData?.color || TYPE_COLORS[node.type] || 0x6080a0).getHexString();
+  const connected = GRAPH_DATA?.edges?.filter(e => e.source === node.id || e.target === node.id) || [];
+  const name = getNodeDisplayName(node.id, mapLang);
+  const typeLabel = getTypeLabel(node.type);
+  const importance = node.properties?.importance || 3;
+  const evidence = node.properties?.evidence || '';
+  const sourceDocs = node.properties?.source_documents || [];
+  const relatedTerms = node.properties?.related_terms || [];
+  const sourceHtml = sourceDocs.slice(0, 8).map(src =>
+    `<div class="source-link" style="color:#e2e8f0">${escapeHTML(src)}</div>`
+  ).join('');
+  const relatedHtml = relatedTerms.slice(0, 8).map(term =>
+    `<span class="tag">${escapeHTML(term)}</span>`
+  ).join('');
+  const connectedHtml = connected.slice(0, 8).map(e => {
+    const otherId = e.source === node.id ? e.target : e.source;
+    const otherName = getNodeDisplayName(otherId, mapLang);
+    return `<div class="source-link" style="color:#e2e8f0">${escapeHTML(otherName)} <span class="muted">/${escapeHTML(e.label || 'related')}</span></div>`;
+  }).join('');
+  el.innerHTML = `
+    <h3 style="color:${color}">${escapeHTML(name)}</h3>
+    <div class="tag-row">
+      <span class="tag">${escapeHTML(typeLabel)}</span>
+      <span class="tag">${mapLang === 'en' ? 'Importance' : '重要度'} ${importance}/5</span>
+      ${node.isSatellite ? `<span class="tag">${mapLang === 'en' ? 'Satellite node' : '卫星节点'}</span>` : ''}
+    </div>
+    <div class="section-title">${mapLang === 'en' ? 'Description' : '描述'}</div>
+    <div class="muted">${escapeHTML(mapLang === 'en' ? translateDescription(node.description || '') : (node.description || ''))}</div>
+    ${evidence ? `<div class="section-title">${mapLang === 'en' ? 'Evidence' : '证据'}</div><div class="muted">${escapeHTML(mapLang === 'en' ? translateDescription(evidence) : evidence)}</div>` : ''}
+    ${sourceHtml ? `<div class="section-title">${mapLang === 'en' ? 'Source Reports' : '来源报告'}</div>${sourceHtml}` : ''}
+    ${relatedHtml ? `<div class="section-title">${mapLang === 'en' ? 'Related Terms' : '相关术语'}</div><div class="tag-row">${relatedHtml}</div>` : ''}
+    <div class="section-title">${mapLang === 'en' ? 'Connected Nodes' : '相邻节点'}</div>
+    ${connectedHtml || `<div class="muted">${mapLang === 'en' ? 'No direct edges displayed.' : '没有直接关系。'}</div>`}
+  `;
+}
+
+function translateDescription(text) {
+  if (!text) return '';
+  let out = text;
+  Object.entries({
+    '量子计算':'quantum computing','量子比特':'qubits','超导':'superconducting','中国':'China','美国':'United States','公司':'company','算法':'algorithm',
+    '硬件':'hardware','应用':'application','理论':'theory','研究':'research','实现':'implementation','优化':'optimization','密码':'cryptography',
+    '纠错':'error correction','噪声':'noise','平台':'platform','技术':'technology','框架':'framework','工具':'tool','系统':'system'
+  }).forEach(([zh, en]) => { out = out.replaceAll(zh, en); });
+  return out;
+}
+
+// ============================================================
+// 推演闪烁联动效果
+// ============================================================
+function flashNode(nodeId, duration = 3000) {
+  if (!nodeIdToMesh[nodeId]) return;
+  flashingNodes.set(nodeId, {
+    startTime: performance.now(),
+    duration: duration,
+    color: nodeIdToMesh[nodeId].userData.color || 0x60A5FA
+  });
+  // 立即高亮节点
+  nodeIdToMesh[nodeId].material.emissiveIntensity = 3.0;
+  nodeIdToMesh[nodeId].scale.set(1.8,1.8,1.8);
+
+  // 添加发光环效果
+  const mesh = nodeIdToMesh[nodeId];
+  const ringGeo = new THREE.RingGeometry(0.06, 0.1, 32);
+  const ringMat = new THREE.MeshBasicMaterial({
+    color: mesh.userData.color || 0x60A5FA,
+    transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false
+  });
+  const ring = new THREE.Mesh(ringGeo, ringMat);
+  ring.position.copy(mesh.position);
+  ring.lookAt(camera.position);
+  ring.userData = { flashRing: true, startTime: performance.now(), duration };
+  flashGroup.add(ring);
+}
+
+function flashEdge(sourceId, targetId, duration = 3000) {
+  const sM = nodeIdToMesh[sourceId], tM = nodeIdToMesh[targetId];
+  if (!sM || !tM) return;
+  // 画一条金色高亮边到flashGroup
+  drawEdge(sM.position, tM.position, 0xFFD700, 0.9, flashGroup, true);
+  // 设置超时移除
+  const edgeIdx = flashGroup.children.length - 1;
+  setTimeout(() => {
+    if (flashGroup.children.length > edgeIdx && flashGroup.children[edgeIdx]) {
+      flashGroup.remove(flashGroup.children[edgeIdx]);
+    }
+  }, duration);
+}
+
+function clearAllFlashes() {
+  flashingNodes.clear();
+  flashGroup.clear();
+  // 重置所有节点
+  Object.values(nodeIdToMesh).forEach(m => {
+    m.scale.set(1,1,1);
+    m.material.emissiveIntensity = m.userData.originalEmissive;
+  });
+  highlightGroup.clear();
+  selectedNodeId = null;
+}
+
+function showTooltip(e, name, type) {
+  const tt = document.getElementById('tooltip');
+  tt.innerHTML = `<b>${name}</b><br><span style="color:#78909c;font-size:10px">${type}</span>`;
+  tt.style.display = 'block';
+  tt.style.left = (e.clientX + 12) + 'px';
+  tt.style.top = (e.clientY + 12) + 'px';
+}
+function hideTooltip() { document.getElementById('tooltip').style.display = 'none'; }
+
+// Keyboard
+window.addEventListener('keydown', e => {
+  if (e.key === 'r') controls.autoRotate = !controls.autoRotate;
+  if (e.key === '0') { controls.target.set(0,0,0); camera.position.set(3.5,2,5); highlightNode(null); selectAttackPath(null); }
+});
+
+// Resize
+window.addEventListener('resize', () => {
+  const s = getContainerSize();
+  camera.aspect = s.w / s.h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(s.w, s.h);
+});
+
+// ============================================================
+// Animation loop
+// ============================================================
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = clock.getDelta();
+  const now = performance.now();
+  controls.update();
+
+  // Pulse selected node
+  if (selectedNodeId && nodeIdToMesh[selectedNodeId]) {
+    const p = 1.8 + 0.15 * Math.sin(now * 0.003);
+    nodeIdToMesh[selectedNodeId].scale.set(p, p, p);
+  }
+
+  // 闪烁节点动画 - 更强的脉冲效果
+  const expiredNodes = [];
+  flashingNodes.forEach((flash, nodeId) => {
+    const elapsed = now - flash.startTime;
+    if (elapsed > flash.duration) {
+      expiredNodes.push(nodeId);
+      return;
+    }
+    const mesh = nodeIdToMesh[nodeId];
+    if (!mesh) return;
+    // 脉冲闪烁效果 - 更快的频率和更大的振幅
+    const phase = (elapsed % 400) / 400;
+    const pulse = 0.5 + 0.5 * Math.sin(phase * Math.PI * 2);
+    mesh.material.emissiveIntensity = 1.5 + pulse * 3.0;
+    const s = 1.3 + pulse * 0.8;
+    mesh.scale.set(s, s, s);
+  });
+  expiredNodes.forEach(nid => {
+    flashingNodes.delete(nid);
+    if (nodeIdToMesh[nid] && nid !== selectedNodeId) {
+      nodeIdToMesh[nid].material.emissiveIntensity = nodeIdToMesh[nid].userData.originalEmissive;
+      nodeIdToMesh[nid].scale.set(1,1,1);
+    }
+  });
+
+  // 闪烁环动画
+  const expiredRings = [];
+  flashGroup.children.forEach((child, i) => {
+    if (child.userData && child.userData.flashRing) {
+      const elapsed = now - child.userData.startTime;
+      const duration = child.userData.duration;
+      if (elapsed > duration) {
+        expiredRings.push(i);
+      } else {
+        // 环扩散+淡出
+        const progress = elapsed / duration;
+        const scale = 1 + progress * 3;
+        child.scale.set(scale, scale, scale);
+        child.material.opacity = 0.8 * (1 - progress);
+        child.lookAt(camera.position);
+      }
+    }
+  });
+  // 从后向前移除过期的环
+  for (let i = expiredRings.length - 1; i >= 0; i--) {
+    flashGroup.remove(flashGroup.children[expiredRings[i]]);
+  }
+
+  // Stars rotation
+  stars.rotation.y += dt * 0.01;
+
+  renderer.render(scene, camera);
+}
+
+// ============================================================
+// 推演引擎前端
+// ============================================================
+const contentEl = document.getElementById('reasoning-content');
+const inputEl = document.getElementById('question-input');
+const askBtn = document.getElementById('ask-btn');
+const modeTabs = document.querySelectorAll('.mode-tab');
+const quickQs = document.querySelectorAll('.quick-q');
+const switch3dBtn = document.getElementById('switch-3d');
+const switch2dBtn = document.getElementById('switch-2d');
+const switchZhBtn = document.getElementById('switch-zh');
+const switchEnBtn = document.getElementById('switch-en');
+
+function setMapMode(mode) {
+  const is2d = mode === '2d';
+  container.classList.toggle('mode-2d', is2d);
+  switch3dBtn.classList.toggle('active', !is2d);
+  switch2dBtn.classList.toggle('active', is2d);
+  controls.enabled = !is2d;
+  if (is2d) {
+    const frame = document.getElementById('classic-2d-frame');
+    if (frame && !frame.getAttribute('src')) {
+      frame.addEventListener('load', () => centerClassic2DFrame(), { once: true });
+      frame.setAttribute('src', frame.dataset.src);
+    } else {
+      centerClassic2DFrame();
+    }
+  }
+  if (!is2d) {
+    const s = getContainerSize();
+    camera.aspect = s.w / s.h;
+    camera.updateProjectionMatrix();
+    renderer.setSize(s.w, s.h);
+  }
+}
+
+function centerClassic2DFrame() {
+  const frame = document.getElementById('classic-2d-frame');
+  if (!frame || !frame.contentWindow) return;
+  setTimeout(() => {
+    try {
+      frame.contentWindow.centerGraphView?.(0);
+    } catch(e) {
+      // Same-origin in dev; ignore if a browser blocks iframe access.
+    }
+  }, 120);
+}
+
+switch3dBtn.addEventListener('click', () => setMapMode('3d'));
+switch2dBtn.addEventListener('click', () => setMapMode('2d'));
+
+function setMapLanguage(lang) {
+  mapLang = lang === 'en' ? 'en' : 'zh';
+  switchZhBtn.classList.toggle('active', mapLang === 'zh');
+  switchEnBtn.classList.toggle('active', mapLang === 'en');
+  updateAllLabels();
+  if (selectedNodeId) {
+    showResearchDetail(researchNodeById[selectedNodeId] || nodeIdToData[selectedNodeId] || null);
+  } else if (activePathId) {
+    const path = ATTACK_PATHS.find(p => p.id === activePathId);
+    if (path) showPathDetail(path);
+  } else {
+    showResearchDetail(null);
+  }
+}
+
+switchZhBtn.addEventListener('click', () => setMapLanguage('zh'));
+switchEnBtn.addEventListener('click', () => setMapLanguage('en'));
+
+// Mode switch
+modeTabs.forEach(tab => {
+  tab.addEventListener('click', () => {
+    if (isReasoning) return;
+    modeTabs.forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    currentMode = tab.dataset.mode;
+  });
+});
+
+// Quick questions
+quickQs.forEach(q => {
+  q.addEventListener('click', () => {
+    if (isReasoning) return;
+    inputEl.value = q.textContent;
+    startReasoning();
+  });
+});
+
+// Ask button
+askBtn.addEventListener('click', startReasoning);
+inputEl.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); startReasoning(); }
+});
+
+// 收集所有推演步骤内容
+let reasoningSteps = [];
+let imaReferences = [];
+let predictionResult = null;
+// 模拟模式中间过程收集
+let simulationData = {
+  agents: [],        // 智能体列表 [{id, name, role, stance, expertise, persona}]
+  rounds: [],         // 每轮讨论 {round: n, speeches: [{agent_name, content}], summary: ''}
+  coordinatorSummary: '',  // 协调者总结
+  phaseMessages: []   // 阶段消息
+};
+
+function syncLatestRunState() {
+  window.__latestPredictionResult = predictionResult || window.__fallbackPredictionResult || null;
+  window.__latestReasoningSteps = reasoningSteps.length ? reasoningSteps : (window.__fallbackReasoningSteps || []);
+  window.__latestSimulationData = (simulationData?.agents?.length || simulationData?.rounds?.length)
+    ? simulationData
+    : (window.__fallbackSimulationData || simulationData);
+  window.__latestImaReferences = imaReferences.length ? imaReferences : (window.__fallbackImaReferences || []);
+}
+
+function getLatestPredictionResult() {
+  return predictionResult || window.__latestPredictionResult || window.__fallbackPredictionResult || null;
+}
+
+function getLatestReasoningSteps() {
+  return reasoningSteps.length ? reasoningSteps : (window.__latestReasoningSteps || window.__fallbackReasoningSteps || []);
+}
+
+function getLatestSimulationData() {
+  return (simulationData?.agents?.length || simulationData?.rounds?.length)
+    ? simulationData
+    : (window.__latestSimulationData || window.__fallbackSimulationData || simulationData);
+}
+
+function getLatestImaReferences() {
+  return imaReferences.length ? imaReferences : (window.__latestImaReferences || window.__fallbackImaReferences || []);
+}
+
+function getLatestMode() {
+  return currentMode || document.querySelector('.mode-tab.active')?.dataset.mode || 'reasoning';
+}
+
+async function startReasoning() {
+  const question = inputEl.value.trim();
+  if (isReasoning) return;
+  if (!question) {
+    showEmptyQuestionHint();
+    inputEl.focus();
+    return;
+  }
+
+  // 检测问题语言
+  questionLang = detectLanguage(question);
+  applyUILanguage();
+
+  isReasoning = true;
+  askBtn.disabled = true;
+  contentEl.innerHTML = '';
+  reasoningSteps = [];
+  imaReferences = [];
+  predictionResult = null;
+  window.__latestPredictionResult = null;
+  window.__latestReasoningSteps = [];
+  window.__latestSimulationData = null;
+  window.__latestImaReferences = [];
+  window.__fallbackPredictionResult = null;
+  window.__fallbackReasoningSteps = [];
+  window.__fallbackSimulationData = null;
+  window.__fallbackImaReferences = [];
+  lastPhaseEl = null;
+  // 重置模拟数据
+  simulationData = { agents: [], rounds: [], coordinatorSummary: '', phaseMessages: [] };
+  clearAllFlashes();
+
+  // Add question display
+  const qLabel = questionLang === 'en' ? '❓ ' : '❓ ';
+  addHTML(`<div style="padding:10px 14px;background:rgba(96,165,250,0.08);border:1px solid rgba(96,165,250,0.2);border-radius:8px;margin-bottom:14px;font-size:13px;color:#93c5fd"><b>${qLabel}${escapeHTML(question)}</b></div>`);
+
+  const endpoint = currentMode === 'simulation' ? '/api/simulate' : '/api/reason';
+
+  try {
+    const resp = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        question: question,
+        mode: currentMode,
+        rounds: 3,
+        lang: questionLang
+      })
+    });
+
+    if (!resp.ok) {
+      let errDetail = '';
+      try { errDetail = await resp.text(); } catch(e2) {}
+      throw new Error(`HTTP ${resp.status}: ${errDetail.substring(0, 200)}`);
+    }
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let sawStreamEvent = false;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const data = line.slice(6).trim();
+        if (data === '[DONE]') continue;
+        try {
+          const event = JSON.parse(data);
+          sawStreamEvent = true;
+          handleEvent(event, question);
+        } catch(e) { /* skip */ }
+      }
+    }
+
+    // 推演完成后请求引用。逐步推理由 complete 事件直接渲染本次推理相关文献，避免重复列表。
+    if (predictionResult && currentMode !== 'reasoning' && !imaReferences.length) {
+      await fetchIMAReferences(question);
+    }
+
+  } catch(e) {
+    console.error('Reasoning error:', e);
+    let errMsg = e.message || (questionLang === 'en' ? 'Unknown error' : '未知错误');
+    if (errMsg.includes('Failed to fetch') || errMsg.includes('NetworkError') || errMsg.includes('network')) {
+      errMsg = sawStreamEvent
+        ? (questionLang === 'en'
+          ? 'The reasoning stream was interrupted after it had started. This is usually a model timeout or upstream disconnect, not a local service startup problem.'
+          : '推演流在执行中断开。通常是模型响应超时或上游连接中断，不是本地服务未启动。')
+        : t('networkError');
+    } else if (errMsg.includes('502') || errMsg.includes('503') || errMsg.includes('504')) {
+      errMsg = t('serverError').replace('{err}', errMsg);
+    }
+    const errTitle = questionLang === 'en' ? '❌ Reasoning Failed' : '❌ 推演失败';
+    const retryBtnText = t('retryBtn');
+    addHTML(`<div style="color:#F87171;font-size:12px;padding:14px;background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.2);border-radius:8px;margin-top:10px">
+      <b>${errTitle}</b><br>
+      <span style="color:#fca5a5">${escapeHTML(errMsg)}</span>
+      <br><button onclick="window.startReasoning?.()" style="margin-top:8px;padding:6px 14px;background:rgba(248,113,113,0.2);border:1px solid rgba(248,113,113,0.3);border-radius:6px;color:#fca5a5;cursor:pointer;font-size:11px">${retryBtnText}</button>
+    </div>`);
+  } finally {
+    isReasoning = false;
+    askBtn.disabled = false;
+  }
+}
+
+window.startReasoning = startReasoning;
+
+function showEmptyQuestionHint() {
+  questionLang = 'zh';
+  applyUILanguage();
+  contentEl.innerHTML = '';
+  addHTML(`<div style="color:#FBBF24;font-size:12px;padding:14px;background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.22);border-radius:8px">
+    <b>请输入一个问题再开始推演</b><br>
+    <span style="color:#fde68a">例如：量子纠错路线未来会如何演进？也可以直接点击下方快捷问题。</span>
+  </div>`);
+}
+
+function handleEvent(event, question) {
+  const eventType = event.type;
+
+  // === Raw content from DeepSeek stream (needs step context) ===
+  if (eventType === 'content') {
+    const steps = contentEl.querySelectorAll('.step-body');
+    for (let i = steps.length - 1; i >= 0; i--) {
+      if (steps[i].dataset.done !== 'true') {
+        const placeholder = steps[i].querySelector('.stream-placeholder');
+        if (placeholder) placeholder.remove();
+        steps[i].innerHTML += formatContent(event.content);
+        scrollToBottom();
+        break;
+      }
+    }
+    // 检测内容中是否包含节点名称，触发闪烁
+    if (event.content && GRAPH_DATA) {
+      for (const node of GRAPH_DATA.nodes) {
+        if (event.content.includes(node.label) && nodeIdToMesh[node.id]) {
+          // 短暂闪烁该节点（2秒）
+          flashNode(node.id, 2000);
+          break; // 每段内容只闪烁一个节点，避免过于频繁
+        }
+      }
+    }
+    return;
+  }
+
+  if (eventType === 'error') {
+    contentEl.querySelectorAll('.stream-placeholder').forEach(el => el.remove());
+    const title = t('errorTitle');
+    const detail = event.detail || event.message || (questionLang === 'en' ? 'Unknown error' : '未知错误');
+    addHTML(`<div style="color:#F87171;font-size:12px;padding:14px;background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.2);border-radius:8px;margin-top:10px">
+      <b>${escapeHTML(title)}</b><br>
+      <span style="color:#fca5a5">${escapeHTML(detail)}</span>
+    </div>`);
+    return;
+  }
+
+  // === 节点高亮事件（推演联动） ===
+  if (eventType === 'highlight_nodes') {
+    const nodeIds = event.node_ids || [];
+    nodeIds.forEach(nid => flashNode(nid, 4000));
+    // 也高亮相关的边
+    const edgePairs = event.edge_pairs || [];
+    edgePairs.forEach(pair => flashEdge(pair[0], pair[1], 4000));
+    return;
+  }
+
+  // === Reasoning mode events ===
+  if (eventType === 'step_start') {
+    reasoningSteps.push({ step: event.step, title: event.title, content: '' });
+    addHTML(`<div id="step-${event.step}" class="reasoning-step">
+      <div class="step-header">
+        <div class="step-number">${event.step}</div>
+        <div class="step-title">${escapeHTML(event.title)}</div>
+      </div>
+      <div class="step-body" id="step-body-${event.step}">${event.step > 0 ? `<span class="stream-placeholder">${questionLang === 'en' ? 'Waiting for model response...' : '正在等待模型返回...'}</span>` : ''}</div>
+    </div>`);
+    scrollToBottom();
+  }
+  else if (eventType === 'step_content') {
+    const el = document.getElementById(`step-body-${event.step}`);
+    if (el) {
+      const placeholder = el.querySelector('.stream-placeholder');
+      if (placeholder) placeholder.remove();
+      el.innerHTML += formatContent(event.content);
+      if (reasoningSteps.length > 0) reasoningSteps[reasoningSteps.length-1].content += event.content;
+      scrollToBottom();
+    }
+  }
+  else if (eventType === 'step_end') {
+    const el = document.getElementById(`step-body-${event.step}`);
+    if (el) el.dataset.done = 'true';
+  }
+  else if (eventType === 'complete') {
+    predictionResult = event;
+    syncLatestRunState();
+    // 标记phase indicator为完成
+    if (lastPhaseEl) {
+      lastPhaseEl.classList.add('completed');
+      lastPhaseEl = null;
+    }
+    // Highlight relevant nodes on 3D globe
+    if (event.subgraph && event.subgraph.seed_nodes) {
+      event.subgraph.seed_nodes.forEach(sn => flashNode(sn.id, 5000));
+    }
+    if (currentMode === 'reasoning') {
+      renderIMAReferencesFromCurrentReasoning(question);
+      addHTML(`<div class="phase-indicator completed"><div class="spinner"></div>${questionLang === 'en' ? 'Reasoning completed' : '推理完成'}</div>`);
+      scrollToBottom();
+    }
+  }
+
+  // === Simulation mode events ===
+  else if (eventType === 'phase') {
+    // 根据阶段和语言选择显示文本
+    let msgText = event.message;
+    const phase = event.phase;
+    if (!msgText) {
+      if (phase === 'entity_extraction') msgText = t('phaseExtracting');
+      else if (phase === 'profile_generation') msgText = t('phaseProfileGen');
+      else if (phase === 'discussion' && !event.message) msgText = t('phaseDiscuss').replace('{n}', '3');
+      else if (phase === 'coordinator_summary') msgText = t('phaseCoordSummarizing');
+      else if (phase === 'prediction') msgText = t('phasePredicting');
+      else if (phase === 'complete') msgText = t('simulationDone');
+    }
+    const phaseHtml = `<div class="phase-indicator"><div class="spinner"></div>${escapeHTML(msgText)}</div>`;
+    addHTML(phaseHtml);
+    // 追踪当前最新的phase indicator
+    const allPhases = contentEl.querySelectorAll('.phase-indicator');
+    lastPhaseEl = allPhases[allPhases.length - 1];
+    if (phase === 'complete') {
+      lastPhaseEl.classList.add('completed');
+      lastPhaseEl = null;
+    }
+    // 收集阶段消息到simulationData
+    simulationData.phaseMessages.push({ phase: phase || '', message: msgText });
+    scrollToBottom();
+  }
+  else if (eventType === 'agent_profile') {
+    const a = event.agent;
+    // 收集智能体数据
+    simulationData.agents.push({
+      id: a.id || a.agent_id,
+      name: a.name,
+      role: a.role || '',
+      stance: a.stance || 'neutral',
+      expertise: a.expertise || '',
+      persona: a.persona || '',
+      entity_type: a.entity_type || ''
+    });
+    syncLatestRunState();
+    const stanceClass = (a.stance||'').includes('optim') ? 'optimistic' : (a.stance||'').includes('pessim') ? 'pessimistic' : (a.stance||'').includes('observer') ? 'observer' : 'neutral';
+    const color = TYPE_COLORS[a.entity_type] || 0x6080a0;
+    const colorHex = '#' + color.toString(16).padStart(6, '0');
+    addHTML(`<div class="agent-card">
+      <div class="agent-header">
+        <div class="agent-avatar" style="background:${colorHex}33;color:${colorHex}">${(a.name||'?')[0]}</div>
+        <div class="agent-name">${escapeHTML(a.name)}</div>
+        <span class="agent-stance stance-${stanceClass}">${escapeHTML(a.stance||'neutral')}</span>
+        <div class="agent-role">${escapeHTML(a.role||'')}</div>
+      </div>
+      <div class="agent-content" style="font-size:11px;color:#78909c">${escapeHTML(a.expertise||'')}</div>
+    </div>`);
+    scrollToBottom();
+
+    // Highlight on globe
+    if (a.id && nodeIdToMesh[a.id]) {
+      flashNode(a.id, 4000);
+    }
+  }
+  else if (eventType === 'round_start') {
+    const roundLabel = questionLang === 'en' ? `💬 Round ${event.round} Discussion` : `💬 第 ${event.round} 轮讨论`;
+    addHTML(`<div class="round-marker">${roundLabel}</div>`);
+    // 初始化本轮数据
+    simulationData.rounds.push({ round: event.round, speeches: [], summary: '' });
+    syncLatestRunState();
+    scrollToBottom();
+  }
+  else if (eventType === 'agent_speech') {
+    const a = event;
+    const nodeType = a.entity_type || 'concept';
+    const color = TYPE_COLORS[nodeType] || 0x6080a0;
+    const colorHex = '#' + color.toString(16).padStart(6, '0');
+    addHTML(`<div class="agent-card">
+      <div class="agent-header">
+        <div class="agent-avatar" style="background:${colorHex}33;color:${colorHex}">${(a.agent_name||'?')[0]}</div>
+        <div class="agent-name">${escapeHTML(a.agent_name)}</div>
+      </div>
+      <div class="agent-content">${formatContent(a.content)}</div>
+    </div>`);
+    scrollToBottom();
+
+    // 收集发言到simulationData
+    const currentRound = simulationData.rounds[simulationData.rounds.length - 1];
+    if (currentRound) {
+      currentRound.speeches.push({
+        agent_name: a.agent_name || '',
+        agent_id: a.agent_id,
+        content: a.content || ''
+      });
+    }
+    syncLatestRunState();
+
+    // Highlight on globe
+    if (a.entity_id && nodeIdToMesh[a.entity_id]) {
+      flashNode(a.entity_id, 3000);
+    }
+  }
+  else if (eventType === 'round_summary') {
+    const label = questionLang === 'en' ? `📋 Round ${event.round} Summary:` : `📋 第${event.round}轮摘要：`;
+    // 收集轮次摘要
+    const rnd = simulationData.rounds.find(r => r.round === event.round);
+    const summary = event.summary || summarizeRoundLocally(rnd, questionLang === 'en');
+    addHTML(`<div class="coordinator-box"><b>${label}</b><br>${formatContent(summary)}</div>`);
+    scrollToBottom();
+    if (rnd) { rnd.summary = summary || ''; }
+    syncLatestRunState();
+  }
+  else if (eventType === 'coordinator_summary') {
+    const label = questionLang === 'en' ? '🎯 Coordinator Summary:' : '🎯 协调者总结：';
+    addHTML(`<div class="coordinator-box"><b>${label}</b><br>${formatContent(event.content)}</div>`);
+    scrollToBottom();
+    // 收集协调者总结
+    simulationData.coordinatorSummary = event.content || '';
+    syncLatestRunState();
+  }
+  // 模拟模式最终完成
+  else if (eventType === 'phase' && event.phase === 'complete') {
+    // 标记当前活动的phase indicator为完成状态
+    if (lastPhaseEl) {
+      lastPhaseEl.classList.add('completed');
+      lastPhaseEl = null;
+    }
+  }
+  else if (eventType === 'prediction') {
+    predictionResult = event;
+    syncLatestRunState();
+    // 标记当前活动的phase indicator为完成状态
+    if (lastPhaseEl) {
+      lastPhaseEl.classList.add('completed');
+      lastPhaseEl = null;
+    }
+    const confidence = event.confidence || 0.5;
+    const confPct = Math.round(confidence * 100);
+    const confColor = confidence > 0.7 ? '#34D399' : confidence > 0.4 ? '#FBBF24' : '#F87171';
+    let evidenceHtml = '';
+    if (event.evidence && event.evidence.length) {
+      const evLabel = questionLang === 'en' ? 'Supporting Evidence:' : '支撑证据:';
+      evidenceHtml = `<div class="evidence-list"><b style="font-size:11px;color:#78909c">${evLabel}</b>${event.evidence.map(e=>`<div class="evidence-item">${escapeHTML(e)}</div>`).join('')}</div>`;
+    }
+    let factorsHtml = '';
+    if (event.key_factors && event.key_factors.length) {
+      const kfLabel = questionLang === 'en' ? 'Key Factors:' : '关键因素:';
+      factorsHtml = `<div style="margin-top:8px"><b style="font-size:11px;color:#78909c">${kfLabel}</b>${event.key_factors.map(f=>`<div class="evidence-item" style="border-left-color:#C084FC">${escapeHTML(f)}</div>`).join('')}</div>`;
+    }
+    const predTitle = questionLang === 'en' ? '🔮 Prediction Conclusion' : '🔮 预测结论';
+    const confLabel = questionLang === 'en' ? `Confidence: ${confPct}%` : `置信度: ${confPct}%`;
+    if (currentMode === 'simulation') {
+      addHTML(`<div class="prediction-box">
+        <div class="prediction-title">${predTitle}</div>
+        <div class="prediction-text">${formatContent(completePredictionReport(event, questionLang))}</div>
+        <div style="margin-top:10px;font-size:11px;color:#78909c">${confLabel}</div>
+        <div class="confidence-bar"><div class="confidence-fill" style="width:${confPct}%;background:${confColor}"></div></div>
+        ${evidenceHtml}${factorsHtml}
+      </div>`);
+      renderSimulationDetails(event);
+      renderIMAReferencesFromCurrentReasoning(question);
+    }
+    scrollToBottom();
+  }
+}
+
+// ============================================================
+// IMA 材料引用
+// ============================================================
+async function fetchIMAReferences(question) {
+  const imaLoadText = questionLang === 'en' ? 'Searching related literature...' : '正在检索相关文献...';
+  addHTML(`<div id="ima-loading" class="phase-indicator"><div class="spinner"></div>${imaLoadText}</div>`);
+  scrollToBottom();
+
+  try {
+    const relatedNodeIds = collectReasoningNodeIds(question);
+    const localRefs = buildLocalLiteratureReferences(relatedNodeIds);
+    const resp = await fetch('/api/ima/references', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question, subgraph_nodes: relatedNodeIds })
+    });
+    const data = await resp.json();
+    imaReferences = mergeLiteratureReferences(localRefs, data.references || []);
+
+    // 移除loading
+    const loadingEl = document.getElementById('ima-loading');
+    if (loadingEl) loadingEl.remove();
+
+    renderIMAReferences();
+  } catch(e) {
+    const loadingEl = document.getElementById('ima-loading');
+    if (loadingEl) loadingEl.remove();
+    console.error('IMA fetch error:', e);
+  }
+}
+
+function collectReasoningNodeIds(question = '') {
+  const graph = window.GRAPH_DATA || GRAPH_DATA;
+  const ids = new Set();
+  const latestPrediction = getLatestPredictionResult();
+  const latestSteps = getLatestReasoningSteps();
+  const latestSimulation = getLatestSimulationData();
+  (latestPrediction?.subgraph?.seed_nodes || []).forEach(n => ids.add(n.id));
+  (latestPrediction?.evidence || []).forEach(id => ids.add(id));
+
+  const text = [
+    question,
+    latestPrediction?.conclusion || '',
+    latestPrediction?.coordinator_summary || '',
+    latestSimulation?.coordinatorSummary || '',
+    ...(latestSteps || []).map(s => `${s.title || ''}\n${s.content || ''}`),
+    ...((latestSimulation?.agents || []).map(a => `${a.name || ''}\n${a.role || ''}\n${a.expertise || ''}\n${a.persona || ''}`)),
+    ...((latestSimulation?.rounds || []).flatMap(r => [
+      r.summary || '',
+      ...((r.speeches || []).map(s => `${s.agent_name || ''}\n${s.content || ''}`))
+    ]))
+  ].join('\n');
+
+  (graph?.nodes || []).forEach(node => {
+    if (!node?.id || ids.has(node.id)) return;
+    const label = node.label || '';
+    const base = label.replace(/[（(].*?[）)]/g, '').trim();
+    if ((label && text.includes(label)) || (base.length >= 2 && text.includes(base))) {
+      ids.add(node.id);
+    }
+  });
+
+  return [...ids];
+}
+
+function buildLocalLiteratureReferences(nodeIds = []) {
+  const graph = window.GRAPH_DATA || GRAPH_DATA;
+  const nodeById = new Map((graph?.nodes || []).map(n => [n.id, n]));
+  const kbNames = {
+    '7412047272751870': '量子计算学习材料',
+    '7425064727240963': '量子产业研究报告',
+    '7411640966326739': '金贻荣老师的直播课件',
+    '7408677623443647': '量子计算',
+    '7441506466037417': '李博士的项目',
+    '量子计算学习材料': '量子计算学习材料',
+    '量子产业研究报告': '量子产业研究报告',
+    '金贻荣老师的直播课件': '金贻荣老师的直播课件',
+    '量子计算': '量子计算',
+    '李博士的项目': '李博士的项目'
+  };
+  const refs = new Map();
+
+  function ensureRef(doc, kbName) {
+    const key = `${kbName || 'IMA知识库'}::${doc}`;
+    if (!refs.has(key)) {
+      refs.set(key, {
+        kb_id: '',
+        kb_name: kbName || 'IMA知识库',
+        title: doc,
+        doc_count: 1,
+        related_nodes: [],
+        sections: [],
+        content: ''
+      });
+    }
+    return refs.get(key);
+  }
+
+  nodeIds.forEach(id => {
+    const node = nodeById.get(id);
+    if (!node) return;
+    const props = node.properties || {};
+    const docs = props.source_documents || [];
+    const kbList = props.source_knowledge_bases || [];
+    const kbName = (kbNames[kbList[0]] || kbList[0] || (node.type === 'report' ? '量子产业研究报告' : 'IMA知识库'));
+    const nodeDocs = docs.length ? docs : (node.type === 'report' ? [node.label] : []);
+    nodeDocs.forEach(doc => {
+      const ref = ensureRef(doc, kbName);
+      if (!ref.related_nodes.includes(node.label)) ref.related_nodes.push(node.label);
+      const evidence = props.evidence || '';
+      const relatedTerms = (props.related_terms || []).join('、');
+      const section = [
+        `涉及节点：${node.label}（${TYPE_LABELS[node.type] || node.type || '节点'}）`,
+        node.description ? `章节/内容片段：${node.description}` : '',
+        evidence ? `原始证据：${evidence}` : '',
+        relatedTerms ? `关联主题：${relatedTerms}` : ''
+      ].filter(Boolean).join('\n');
+      if (section && !ref.sections.includes(section)) ref.sections.push(section);
+    });
+  });
+
+  return [...refs.values()].map(ref => ({
+    ...ref,
+    doc_count: Math.max(1, Number(ref.doc_count || 0)),
+    related_nodes: ref.related_nodes.slice(0, 12),
+    content: ref.sections.slice(0, 8).join('\n\n')
+  })).sort((a, b) => b.related_nodes.length - a.related_nodes.length);
+}
+
+function mergeLiteratureReferences(primaryRefs, secondaryRefs) {
+  const merged = new Map();
+  [...primaryRefs, ...secondaryRefs].forEach(ref => {
+    const key = `${ref.kb_name || ''}::${ref.title || ''}`;
+    if (!key.trim()) return;
+    if (!merged.has(key)) {
+      merged.set(key, {...ref});
+      return;
+    }
+    const existing = merged.get(key);
+    existing.content = existing.content || ref.content || '';
+    existing.related_nodes = [...new Set([...(existing.related_nodes || []), ...(ref.related_nodes || [])])];
+    existing.doc_count = Math.max(1, Number(existing.doc_count || 0), Number(ref.doc_count || 0));
+  });
+  return [...merged.values()].map(ref => ({
+    ...ref,
+    doc_count: Math.max(1, Number(ref.doc_count || 0))
+  })).slice(0, 30);
+}
+
+function renderIMAReferencesFromCurrentReasoning(question) {
+  const relatedNodeIds = collectReasoningNodeIds(question);
+  imaReferences = buildLocalLiteratureReferences(relatedNodeIds);
+  syncLatestRunState();
+  renderIMAReferences();
+}
+
+function getExportImaReferences(question = '') {
+  let refs = getLatestImaReferences();
+  if (!refs.length) {
+    refs = buildLocalLiteratureReferences(collectReasoningNodeIds(question || inputEl.value.trim()));
+  }
+  refs = refs.map(ref => ({
+    ...ref,
+    doc_count: Math.max(1, Number(ref.doc_count || 0)),
+    content: ref.content || (ref.sections || []).join('\n\n') || '',
+    related_nodes: ref.related_nodes || ref.nodes || []
+  }));
+  imaReferences = refs;
+  syncLatestRunState();
+  return refs;
+}
+
+function renderIMAReferences() {
+  if (imaReferences.length === 0) {
+    addHTML(`<div class="ima-references">
+      <div class="ima-ref-title">${questionLang === 'en' ? '📚 Related Literature (0)' : '📚 相关文献列表 (0)'}</div>
+      <div style="font-size:11px;color:#78909c">${questionLang === 'en' ? 'No source documents were matched from this reasoning run.' : '本次推理没有从图谱元数据中匹配到来源文献。'}</div>
+    </div>`);
+    scrollToBottom();
+    return;
+  }
+
+  let refsHtml = imaReferences.map((ref, i) => {
+    let contentHtml = '';
+    if (ref.content) {
+      contentHtml = `<div class="ima-content-preview">${escapeHTML(ref.content.substring(0, 1200))}${ref.content.length > 1200 ? '...' : ''}</div>`;
+    }
+    const docCountBadge = `<span class="ref-kb">${Math.max(1, Number(ref.doc_count || 0))}篇</span>`;
+    const relatedBadge = ref.related_nodes && ref.related_nodes.length > 0
+      ? `<span style="font-size:9px;color:#34D399;margin-left:4px">🔗 ${ref.related_nodes.length}个关联节点</span>`
+      : '';
+    return `<div class="ima-ref-item" style="flex-direction:column;align-items:flex-start">
+      <div style="display:flex;justify-content:space-between;width:100%;align-items:center">
+        <div>
+          <span style="font-weight:600;color:#e0e0e0">${i+1}. ${escapeHTML(ref.title)}</span>
+          <span class="ref-kb">${escapeHTML(ref.kb_name)}</span>
+          ${docCountBadge}${relatedBadge}
+        </div>
+        <span class="ref-unlock" title="${questionLang === 'en' ? 'Open source' : '公开来源'}">🔓</span>
+      </div>
+      ${contentHtml}
+    </div>`;
+  }).join('');
+
+  addHTML(`<div class="ima-references">
+    <div class="ima-ref-title">${questionLang === 'en' ? `📚 Related Literature (${imaReferences.length})` : `📚 相关文献列表 (${imaReferences.length})`}</div>
+    <div style="font-size:10px;color:#34D399;margin-bottom:8px">${questionLang === 'en' ? '🔓 Open sources - source documents and involved sections are available' : '🔓 公开来源 - 已列出本次推演涉及的 IMA 文章与章节内容片段'}</div>
+    ${refsHtml}
+  </div>`);
+  scrollToBottom();
+}
+
+// 兼容旧按钮/历史结果：来源已开放，不再切换收费状态。
+window.togglePaywall = function() {
+  isPaidUser = true;
+  localStorage.setItem('qkg_paid', 'true');
+  const oldRefs = contentEl.querySelector('.ima-references');
+  if (oldRefs) oldRefs.remove();
+  renderIMAReferences();
+};
+
+// ============================================================
+// 导出报告
+// ============================================================
+const exportBtn = document.getElementById('export-btn');
+const exportModal = document.getElementById('export-modal');
+const exportModalClose = document.getElementById('export-modal-close');
+const doExportBtn = document.getElementById('do-export-btn');
+const exportStatus = document.getElementById('export-status');
+
+let exportLang = 'zh';
+let exportFormat = 'html';
+
+exportBtn.addEventListener('click', () => {
+  const latestPrediction = getLatestPredictionResult();
+  if (!latestPrediction) {
+    alert(questionLang === 'en' ? 'Please complete a reasoning session before exporting' : '请先完成一次推演再导出报告');
+    return;
+  }
+  syncLatestRunState();
+  exportModal.classList.add('open');
+});
+
+exportModalClose.addEventListener('click', () => exportModal.classList.remove('open'));
+exportModal.addEventListener('click', (e) => { if (e.target === exportModal) exportModal.classList.remove('open'); });
+
+// 语言选项
+document.querySelectorAll('#lang-options .modal-option').forEach(opt => {
+  opt.addEventListener('click', () => {
+    document.querySelectorAll('#lang-options .modal-option').forEach(o => o.classList.remove('selected'));
+    opt.classList.add('selected');
+    exportLang = opt.dataset.value;
+  });
+});
+
+// 格式选项
+document.querySelectorAll('#format-options .modal-option').forEach(opt => {
+  opt.addEventListener('click', () => {
+    document.querySelectorAll('#format-options .modal-option').forEach(o => o.classList.remove('selected'));
+    opt.classList.add('selected');
+    exportFormat = opt.dataset.value;
+  });
+});
+
+// 浏览目录
+document.getElementById('export-dir-btn').addEventListener('click', () => {
+  const dir = prompt(questionLang === 'en' ? 'Enter export directory path:' : '请输入导出目录路径：', document.getElementById('export-dir').value);
+  if (dir) document.getElementById('export-dir').value = dir;
+});
+
+// 执行导出
+doExportBtn.addEventListener('click', async () => {
+  const latestPrediction = getLatestPredictionResult();
+  if (!latestPrediction) return;
+  doExportBtn.disabled = true;
+  exportStatus.textContent = '正在生成报告...';
+
+  try {
+    const latestMode = getLatestMode();
+    const latestSimulation = getLatestSimulationData();
+    const resp = await fetch('/api/export/report', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        question: inputEl.value.trim(),
+        mode: latestMode,
+        steps: getLatestReasoningSteps(),
+        prediction: latestPrediction,
+        ima_references: getExportImaReferences(inputEl.value.trim()),
+        lang: exportLang || questionLang,
+        format: exportFormat,
+        export_dir: document.getElementById('export-dir').value,
+        simulation_data: latestMode === 'simulation' ? latestSimulation : null
+      })
+    });
+
+    if (resp.ok) {
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = getDownloadFilename(resp, exportFormat);
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      const fallback = resp.headers.get('X-Export-Fallback');
+      exportStatus.textContent = fallback === 'weasyprint-to-reportlab'
+        ? (questionLang === 'en' ? '✅ PDF generated with fallback engine and downloaded!' : '✅ PDF 已用备用引擎生成并下载！')
+        : (questionLang === 'en' ? '✅ Report generated and downloaded!' : '✅ 报告已生成并下载！');
+    } else {
+      const err = await resp.json();
+      exportStatus.textContent = `${questionLang === 'en' ? '❌ Export failed:' : '❌ 生成失败:'} ${err.detail || (questionLang === 'en' ? 'Unknown error' : '未知错误')}`;
+    }
+  } catch(e) {
+    exportStatus.textContent = `${questionLang === 'en' ? '❌ Export failed:' : '❌ 生成失败:'} ${e.message}`;
+  } finally {
+    doExportBtn.disabled = false;
+  }
+});
+
+function getDownloadFilename(resp, requestedFormat) {
+  const cd = resp.headers.get('Content-Disposition') || resp.headers.get('content-disposition') || '';
+  const utf8Match = cd.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match) return decodeURIComponent(utf8Match[1].replace(/"/g, ''));
+  const plainMatch = cd.match(/filename="?([^";]+)"?/i);
+  if (plainMatch) return plainMatch[1];
+  const ext = requestedFormat === 'docx' ? 'docx' : requestedFormat === 'pdf' ? 'pdf' : 'html';
+  return `quantum_report_${Date.now()}.${ext}`;
+}
+
+// ============================================================
+// Utility
+// ============================================================
+function addHTML(html) {
+  const div = document.createElement('div');
+  div.innerHTML = html;
+  contentEl.appendChild(div);
+}
+function scrollToBottom() { contentEl.scrollTop = contentEl.scrollHeight; }
+function escapeHTML(s) { const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+function formatContent(s) {
+  if (!s) return '';
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/\*\*(.*?)\*\*/g,'<b>$1</b>')
+    .replace(/`([^`]+)`/g,'<code>$1</code>')
+    .replace(/\n/g,'<br>');
+}
+
+function looksTruncated(text = '') {
+  const t = String(text || '').trim();
+  if (!t) return true;
+  if (t.length < 120) return true;
+  return /(?:不是|不是$|，|、|：|:|；|;|和|与|但|而|为|在|the|and|or|but|not)$/i.test(t);
+}
+
+function summarizeRoundLocally(round, isEn = false) {
+  const speeches = round?.speeches || [];
+  if (!speeches.length) return '';
+  const names = speeches.slice(0, 4).map(s => s.agent_name).filter(Boolean).join(isEn ? ', ' : '、');
+  const snippets = speeches.slice(0, 3).map(s => String(s.content || '').replace(/\s+/g, ' ').slice(0, 54)).filter(Boolean);
+  if (isEn) {
+    return `Round ${round.round || ''} included ${speeches.length} speeches. Main participants (${names || 'agents'}) focused on ${snippets.join('; ')}.`;
+  }
+  return `第${round.round || ''}轮共有${speeches.length}条发言，主要参与方包括${names || '多个智能体'}，讨论焦点集中在：${snippets.join('；')}。`;
+}
+
+function completePredictionReport(prediction = {}, lang = 'zh') {
+  const base = String(prediction.conclusion || prediction.coordinator_summary || '').trim();
+  if (!looksTruncated(base) && /(?:置信度|Confidence|证据|Evidence|不确定|Uncertainties)/i.test(base)) {
+    return base;
+  }
+  const isEn = lang === 'en';
+  const latestSimulation = getLatestSimulationData();
+  const roundSummaries = (latestSimulation?.rounds || [])
+    .map(r => r.summary || summarizeRoundLocally(r, isEn))
+    .filter(Boolean)
+    .slice(0, 3);
+  const agents = (latestSimulation?.agents || prediction.agents || []).map(a => a.name).filter(Boolean).slice(0, 8);
+  const confidence = Math.round(Number(prediction.confidence || 0.75) * 100);
+
+  if (isEn) {
+    return `${base}
+
+### Completed Final Prediction
+- Prediction: Based on the multi-agent discussion, the final answer should prioritize the routes and organizations that repeatedly appeared across equipment, supply-chain, engineering readiness, and commercialization arguments. The strongest candidates are those that combine physics insight, system integration, automated calibration, and resilient sourcing rather than relying on a single imported component.
+- Confidence: ${confidence}%
+- Key evidence: ${roundSummaries.join(' ')}
+- Participating perspectives: ${agents.join(', ')}
+- Uncertainties: export controls, long-duration uptime validation, hidden consumable bottlenecks, funding cycles, and whether alternative architectures can bypass the most sensitive components.
+`;
+  }
+
+  return `${base}
+
+### 补齐后的最终预测
+- 预测结论：基于多轮讨论，最终判断不应只看单个器件参数，而应优先看能同时打通核心设备、供应链韧性、系统集成、校准自动化和商业可运维性的路线与公司。最具后发优势的主体，通常是具备物理理解、光机电一体化、自研控制软件与关键耗材替代能力的团队，而不是单纯依赖外购高端激光器或物镜的组装型团队。
+- 置信度：${confidence}%
+- 关键证据：${roundSummaries.join(' ')}
+- 参与视角：${agents.join('、')}
+- 不确定因素：出口管制强度、5000小时级连续运行验证、特种耗材与镀膜工艺自主化、资本投入节奏，以及中性原子替代架构能否真正降低对高端进口部件的依赖。
+`;
+}
+
+function renderSimulationDetails(prediction = {}) {
+  const agents = simulationData.agents.length ? simulationData.agents : (prediction.agents || []);
+  const rounds = simulationData.rounds || [];
+  const speechCount = rounds.reduce((sum, round) => sum + (round.speeches || []).length, 0) || prediction.speech_count || 0;
+  const isEn = questionLang === 'en';
+
+  const colorForType = (type) => {
+    const color = TYPE_COLORS[type] || 0x6080a0;
+    return '#' + color.toString(16).padStart(6, '0');
+  };
+  const agentRows = agents.map(agent => `
+    <div class="evidence-item" style="border-left-color:${colorForType(agent.entity_type)}">
+      <b>${escapeHTML(agent.name || '')}</b>${agent.role ? ` / ${escapeHTML(agent.role)}` : ''}${agent.stance ? ` / ${escapeHTML(agent.stance)}` : ''}
+      ${agent.expertise ? `<br><span style="color:#78909c">${escapeHTML(agent.expertise)}</span>` : ''}
+    </div>`).join('');
+  const roundRows = rounds.map(round => {
+    const summary = round.summary || summarizeRoundLocally(round, isEn);
+    return `<div class="evidence-item" style="border-left-color:#60A5FA">
+      <b>${isEn ? `Round ${round.round}` : `第${round.round}轮`}</b>
+      <span style="color:#78909c"> · ${(round.speeches || []).length} ${isEn ? 'speeches' : '条发言'}</span>
+      ${summary ? `<br><span style="color:#b0bec5">${escapeHTML(summary).slice(0, 260)}${summary.length > 260 ? '...' : ''}</span>` : ''}
+    </div>`;
+  }).join('');
+
+  addHTML(`<div class="ima-references">
+    <div class="ima-ref-title">${isEn ? '📋 Multi-agent Simulation Details' : '📋 多智能体模拟详细列表'}</div>
+    <div style="font-size:10px;color:#78909c;margin-bottom:8px">
+      ${isEn
+        ? `${agents.length} agents · ${rounds.length || prediction.rounds_count || 0} rounds · ${speechCount} speeches`
+        : `${agents.length} 个智能体 · ${rounds.length || prediction.rounds_count || 0} 轮讨论 · ${speechCount} 条发言`}
+    </div>
+    ${agentRows ? `<div style="font-size:11px;color:#FBBF24;margin:8px 0 4px">${isEn ? 'Participating agents' : '参与智能体'}</div>${agentRows}` : ''}
+    ${roundRows ? `<div style="font-size:11px;color:#FBBF24;margin:10px 0 4px">${isEn ? 'Round summaries' : '轮次摘要'}</div>${roundRows}` : ''}
+  </div>`);
+}
+
+// ============================================================
+// Init
+// ============================================================
+setTimeout(hideInitialLoading, 3000);
+try {
+  await loadGraphAndRender();
+} catch (e) {
+  console.error('Graph render error:', e);
+  hideInitialLoading();
+}
+animate();
+window.startReasoning = startReasoning;
+askBtn.onclick = (e) => {
+  e.preventDefault();
+  startReasoning();
+};
+inputEl.onkeydown = (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    startReasoning();
+  }
+};
+</script>
+<script>
+(function installReasoningFallback(){
+  const contentEl = document.getElementById('reasoning-content');
+  const inputEl = document.getElementById('question-input');
+  const askBtn = document.getElementById('ask-btn');
+  if (!contentEl || !inputEl || !askBtn) return;
+
+  let running = false;
+  const fmt = (s) => (s || '')
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/\*\*(.*?)\*\*/g,'<b>$1</b>')
+    .replace(/`([^`]+)`/g,'<code>$1</code>')
+    .replace(/\n/g,'<br>');
+  const esc = (s) => {
+    const d = document.createElement('div');
+    d.textContent = s || '';
+    return d.innerHTML;
+  };
+  const add = (html) => {
+    const div = document.createElement('div');
+    div.innerHTML = html;
+    contentEl.appendChild(div);
+    contentEl.scrollTop = contentEl.scrollHeight;
+  };
+  const langOf = (text) => {
+    if (!text) return 'zh';
+    const ascii = text.replace(/[^\x00-\x7F]/g, '').length;
+    return ascii / text.length > 0.7 ? 'en' : 'zh';
+  };
+  const looksTruncatedLocal = (text = '') => {
+    const t = String(text || '').trim();
+    if (!t || t.length < 120) return true;
+    return /(?:不是|不是$|，|、|：|:|；|;|和|与|但|而|为|在|the|and|or|but|not)$/i.test(t);
+  };
+  const summarizeRoundLocal = (round, lang) => {
+    const speeches = round?.speeches || [];
+    if (!speeches.length) return '';
+    const names = speeches.slice(0, 4).map(s => s.agent_name).filter(Boolean).join(lang === 'en' ? ', ' : '、');
+    const snippets = speeches.slice(0, 3).map(s => String(s.content || '').replace(/\s+/g, ' ').slice(0, 54)).filter(Boolean);
+    return lang === 'en'
+      ? `Round ${round.round || ''} included ${speeches.length} speeches. Main participants (${names || 'agents'}) focused on ${snippets.join('; ')}.`
+      : `第${round.round || ''}轮共有${speeches.length}条发言，主要参与方包括${names || '多个智能体'}，讨论焦点集中在：${snippets.join('；')}。`;
+  };
+  const completePredictionLocal = (event, lang) => {
+    const base = String(event.conclusion || event.coordinator_summary || '').trim();
+    if (!looksTruncatedLocal(base) && /(?:置信度|Confidence|证据|Evidence|不确定|Uncertainties)/i.test(base)) return base;
+    const data = window.__fallbackSimulationData || { agents: [], rounds: [] };
+    const roundSummaries = (data.rounds || []).map(r => r.summary || summarizeRoundLocal(r, lang)).filter(Boolean).slice(0, 3);
+    const agents = (data.agents || event.agents || []).map(a => a.name).filter(Boolean).slice(0, 8);
+    const confidence = Math.round(Number(event.confidence || 0.75) * 100);
+    if (lang === 'en') {
+      return `${base}
+
+### Completed Final Prediction
+- Prediction: The strongest candidates are the routes and teams that combine core equipment control, supply-chain resilience, automated calibration, engineering uptime, and commercialization readiness.
+- Confidence: ${confidence}%
+- Key evidence: ${roundSummaries.join(' ')}
+- Participating perspectives: ${agents.join(', ')}
+- Uncertainties: export controls, uptime validation, hidden consumable bottlenecks, funding cycles, and whether alternative architectures can bypass sensitive components.`;
+    }
+    return `${base}
+
+### 补齐后的最终预测
+- 预测结论：基于多轮讨论，最终判断不应只看单个器件参数，而应优先看能同时打通核心设备、供应链韧性、系统集成、校准自动化和商业可运维性的路线与公司。最具后发优势的主体，通常是具备物理理解、光机电一体化、自研控制软件与关键耗材替代能力的团队。
+- 置信度：${confidence}%
+- 关键证据：${roundSummaries.join(' ')}
+- 参与视角：${agents.join('、')}
+- 不确定因素：出口管制强度、5000小时级连续运行验证、特种耗材与镀膜工艺自主化、资本投入节奏，以及替代架构能否真正降低对高端进口部件的依赖。`;
+  };
+  const activeMode = () => document.querySelector('.mode-tab.active')?.dataset.mode || 'reasoning';
+  const typeColor = (type) => ({
+    company:'#E57373', person:'#BA68C8', organization:'#F06292',
+    hardware:'#81C784', material:'#A1887F', tool:'#90A4AE',
+    concept:'#4FC3F7', protocol:'#4DB6AC', algorithm:'#FF8A65',
+    application:'#FFD54F', theory:'#7986CB', software:'#2DD4BF',
+    security:'#FACC15', qec:'#A855F7', standard:'#818CF8'
+  }[type] || '#6080a0');
+  const stanceClass = (stance) => {
+    const s = String(stance || '').toLowerCase();
+    if (s.includes('optim')) return 'optimistic';
+    if (s.includes('pessim')) return 'pessimistic';
+    if (s.includes('observer')) return 'observer';
+    return 'neutral';
+  };
+  const renderPhase = (message) => {
+    add(`<div class="phase-indicator"><div class="spinner"></div>${esc(message || '')}</div>`);
+  };
+  const renderAgentProfile = (agent) => {
+    const color = typeColor(agent.entity_type);
+    add(`<div class="agent-card">
+      <div class="agent-header">
+        <div class="agent-avatar" style="background:${color}33;color:${color}">${esc((agent.name || '?').slice(0, 1))}</div>
+        <div class="agent-name">${esc(agent.name || '')}</div>
+        <span class="agent-stance stance-${stanceClass(agent.stance)}">${esc(agent.stance || 'neutral')}</span>
+        <div class="agent-role">${esc(agent.role || '')}</div>
+      </div>
+      <div class="agent-content" style="font-size:11px;color:#78909c">${esc(agent.expertise || '')}</div>
+    </div>`);
+  };
+  const renderRoundStart = (round, lang) => {
+    const label = lang === 'en' ? `💬 Round ${round} Discussion` : `💬 第 ${round} 轮讨论`;
+    add(`<div class="round-marker">${label}</div>`);
+  };
+  const renderAgentSpeech = (event) => {
+    const color = typeColor(event.entity_type || 'concept');
+    add(`<div class="agent-card">
+      <div class="agent-header">
+        <div class="agent-avatar" style="background:${color}33;color:${color}">${esc((event.agent_name || '?').slice(0, 1))}</div>
+        <div class="agent-name">${esc(event.agent_name || '')}</div>
+      </div>
+      <div class="agent-content">${fmt(event.content || '')}</div>
+    </div>`);
+  };
+  const renderRoundSummary = (event, lang) => {
+    const label = lang === 'en' ? `📋 Round ${event.round} Summary:` : `📋 第${event.round}轮摘要：`;
+    add(`<div class="coordinator-box"><b>${label}</b><br>${fmt(event.summary || '')}</div>`);
+  };
+  const renderFinalPrediction = (event, lang) => {
+    const confidence = Number(event.confidence || 0.5);
+    const confPct = Math.round(confidence * 100);
+    const confColor = confidence > 0.7 ? '#34D399' : confidence > 0.4 ? '#FBBF24' : '#F87171';
+    const title = lang === 'en' ? '🔮 Final Prediction Report' : '🔮 最终预测报告';
+    const confLabel = lang === 'en' ? `Confidence: ${confPct}%` : `置信度: ${confPct}%`;
+    const evidence = Array.isArray(event.evidence) ? event.evidence : [];
+    const factors = Array.isArray(event.key_factors) ? event.key_factors : [];
+    const evidenceHtml = evidence.length
+      ? `<div class="evidence-list"><b style="font-size:11px;color:#78909c">${lang === 'en' ? 'Supporting Evidence:' : '支撑证据:'}</b>${evidence.map(e => `<div class="evidence-item">${esc(e)}</div>`).join('')}</div>`
+      : '';
+    const factorsHtml = factors.length
+      ? `<div style="margin-top:8px"><b style="font-size:11px;color:#78909c">${lang === 'en' ? 'Key Factors / Uncertainties:' : '关键因素 / 不确定因素:'}</b>${factors.map(f => `<div class="evidence-item" style="border-left-color:#C084FC">${esc(f)}</div>`).join('')}</div>`
+      : '';
+    add(`<div class="prediction-box">
+      <div class="prediction-title">${title}</div>
+      <div class="prediction-text">${fmt(completePredictionLocal(event, lang))}</div>
+      <div style="margin-top:10px;font-size:11px;color:#78909c">${confLabel}</div>
+      <div class="confidence-bar"><div class="confidence-fill" style="width:${confPct}%;background:${confColor}"></div></div>
+      ${evidenceHtml}${factorsHtml}
+    </div>`);
+  };
+  const renderSimulationDetailList = (prediction, lang) => {
+    const data = window.__fallbackSimulationData || { agents: [], rounds: [] };
+    const agents = data.agents.length ? data.agents : (prediction.agents || []);
+    const rounds = data.rounds || [];
+    const speechCount = rounds.reduce((sum, round) => sum + (round.speeches || []).length, 0) || prediction.speech_count || 0;
+    const agentRows = agents.map(agent => `
+      <div class="evidence-item" style="border-left-color:${typeColor(agent.entity_type)}">
+        <b>${esc(agent.name || '')}</b>${agent.role ? ` / ${esc(agent.role)}` : ''}${agent.stance ? ` / ${esc(agent.stance)}` : ''}
+        ${agent.expertise ? `<br><span style="color:#78909c">${esc(agent.expertise)}</span>` : ''}
+      </div>`).join('');
+    const roundRows = rounds.map(round => `
+      <div class="evidence-item" style="border-left-color:#60A5FA">
+        <b>${lang === 'en' ? `Round ${round.round}` : `第${round.round}轮`}</b>
+        <span style="color:#78909c"> · ${(round.speeches || []).length} ${lang === 'en' ? 'speeches' : '条发言'}</span>
+        ${(() => {
+          const summary = round.summary || summarizeRoundLocal(round, lang);
+          return summary ? `<br><span style="color:#b0bec5">${esc(summary).slice(0, 260)}${summary.length > 260 ? '...' : ''}</span>` : '';
+        })()}
+      </div>`).join('');
+    add(`<div class="ima-references">
+      <div class="ima-ref-title">${lang === 'en' ? '📋 Multi-agent Simulation Details' : '📋 多智能体模拟详细列表'}</div>
+      <div style="font-size:10px;color:#78909c;margin-bottom:8px">
+        ${lang === 'en'
+          ? `${agents.length} agents · ${rounds.length || prediction.rounds_count || 0} rounds · ${speechCount} speeches`
+          : `${agents.length} 个智能体 · ${rounds.length || prediction.rounds_count || 0} 轮讨论 · ${speechCount} 条发言`}
+      </div>
+      ${agentRows ? `<div style="font-size:11px;color:#FBBF24;margin:8px 0 4px">${lang === 'en' ? 'Participating agents' : '参与智能体'}</div>${agentRows}` : ''}
+      ${roundRows ? `<div style="font-size:11px;color:#FBBF24;margin:10px 0 4px">${lang === 'en' ? 'Round summaries' : '轮次摘要'}</div>${roundRows}` : ''}
+    </div>`);
+  };
+  const renderReasoningLiteratureList = (prediction, lang, question) => {
+    const graph = window.GRAPH_DATA || {nodes: []};
+    const typeLabels = {
+      concept:'概念',company:'公司',hardware:'硬件',application:'应用',algorithm:'算法',
+      person:'人物',theory:'理论',protocol:'协议',tool:'工具',organization:'机构',
+      material:'材料',report:'报告',qec:'纠错',security:'安全',software:'软件',standard:'标准'
+    };
+    const kbNames = {
+      '7412047272751870':'量子计算学习材料',
+      '7425064727240963':'量子产业研究报告',
+      '7411640966326739':'金贻荣老师的直播课件',
+      '7408677623443647':'量子计算',
+      '7441506466037417':'李博士的项目',
+      '量子计算学习材料':'量子计算学习材料',
+      '量子产业研究报告':'量子产业研究报告',
+      '金贻荣老师的直播课件':'金贻荣老师的直播课件',
+      '量子计算':'量子计算',
+      '李博士的项目':'李博士的项目'
+    };
+    const ids = new Set();
+    (prediction?.subgraph?.seed_nodes || []).forEach(n => ids.add(n.id));
+    (prediction?.evidence || []).forEach(id => ids.add(id));
+    const text = [
+      question || '',
+      prediction?.conclusion || '',
+      prediction?.coordinator_summary || '',
+      window.__fallbackSimulationData?.coordinatorSummary || '',
+      ...(window.__fallbackReasoningSteps || []).map(s => `${s.title || ''}\n${s.content || ''}`),
+      ...((window.__fallbackSimulationData?.agents || []).map(a => `${a.name || ''}\n${a.role || ''}\n${a.expertise || ''}\n${a.persona || ''}`)),
+      ...((window.__fallbackSimulationData?.rounds || []).flatMap(r => [
+        r.summary || '',
+        ...((r.speeches || []).map(s => `${s.agent_name || ''}\n${s.content || ''}`))
+      ]))
+    ].join('\n');
+    (graph.nodes || []).forEach(node => {
+      const label = node.label || '';
+      const base = label.replace(/[（(].*?[）)]/g, '').trim();
+      if ((label && text.includes(label)) || (base.length >= 2 && text.includes(base))) ids.add(node.id);
+    });
+    const refs = new Map();
+    [...ids].forEach(id => {
+      const node = (graph.nodes || []).find(n => n.id === id);
+      if (!node) return;
+      const props = node.properties || {};
+      const docs = props.source_documents || [];
+      const kbList = props.source_knowledge_bases || [];
+      const kbName = kbNames[kbList[0]] || kbList[0] || (node.type === 'report' ? '量子产业研究报告' : 'IMA知识库');
+      const nodeDocs = docs.length ? docs : (node.type === 'report' ? [node.label] : []);
+      nodeDocs.forEach(doc => {
+        const key = `${kbName}::${doc}`;
+        if (!refs.has(key)) refs.set(key, {title:doc, kbName, nodes:[], sections:[]});
+        const ref = refs.get(key);
+        if (!ref.nodes.includes(node.label)) ref.nodes.push(node.label);
+        const section = [
+          `涉及节点：${node.label}（${typeLabels[node.type] || node.type || '节点'}）`,
+          node.description ? `章节/内容片段：${node.description}` : '',
+          props.evidence ? `原始证据：${props.evidence}` : '',
+          (props.related_terms || []).length ? `关联主题：${props.related_terms.join('、')}` : ''
+        ].filter(Boolean).join('\n');
+        if (section && !ref.sections.includes(section)) ref.sections.push(section);
+      });
+    });
+    const refList = [...refs.values()].sort((a,b) => b.nodes.length - a.nodes.length).slice(0, 30);
+    window.__fallbackImaReferences = refList.map(ref => ({
+      title: ref.title,
+      kb_name: ref.kbName,
+      related_nodes: ref.nodes,
+      content: ref.sections.slice(0, 8).join('\n\n')
+    }));
+    window.__latestImaReferences = window.__fallbackImaReferences;
+    const rows = refList.map((ref, i) => `
+      <div class="ima-ref-item" style="flex-direction:column;align-items:flex-start">
+        <div style="display:flex;justify-content:space-between;width:100%;align-items:center">
+          <div>
+            <span style="font-weight:600;color:#e0e0e0">${i+1}. ${esc(ref.title)}</span>
+            <span class="ref-kb">${esc(ref.kbName)}</span>
+            <span style="font-size:9px;color:#34D399;margin-left:4px">🔗 ${ref.nodes.length}个关联节点</span>
+          </div>
+          <span class="ref-unlock" title="公开来源">🔓</span>
+        </div>
+        <div class="ima-content-preview">${esc(ref.sections.slice(0, 8).join('\n\n')).replace(/\n/g, '<br>')}</div>
+      </div>`).join('');
+    add(`<div class="ima-references">
+      <div class="ima-ref-title">${lang === 'en' ? `📚 Related Literature (${refList.length})` : `📚 相关文献列表 (${refList.length})`}</div>
+      <div style="font-size:10px;color:#34D399;margin-bottom:8px">${lang === 'en' ? 'Open sources - source documents and involved sections are available' : '🔓 公开来源 - 已列出本次推演涉及的 IMA 文章与章节内容片段'}</div>
+      ${rows || `<div style="font-size:11px;color:#78909c">${lang === 'en' ? 'No source documents matched.' : '本次推理没有从图谱元数据中匹配到来源文献。'}</div>`}
+    </div>`);
+  };
+
+  async function runFallback(questionFromQuick) {
+    const question = (questionFromQuick || inputEl.value || '').trim();
+    if (running) return;
+    if (!question) {
+      contentEl.innerHTML = '';
+      add(`<div style="color:#FBBF24;font-size:12px;padding:14px;background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.22);border-radius:8px">
+        <b>请输入一个问题再开始推演</b><br>
+        <span style="color:#fde68a">例如：量子纠错路线未来会如何演进？也可以直接点击下方快捷问题。</span>
+      </div>`);
+      inputEl.focus();
+      return;
+    }
+
+    running = true;
+    askBtn.disabled = true;
+    contentEl.innerHTML = '';
+    window.__fallbackReasoningSteps = [];
+    window.__fallbackPredictionResult = null;
+    window.__fallbackSimulationData = { agents: [], rounds: [], coordinatorSummary: '', phaseMessages: [] };
+    window.__fallbackImaReferences = [];
+    window.__latestPredictionResult = null;
+    window.__latestReasoningSteps = [];
+    window.__latestSimulationData = window.__fallbackSimulationData;
+    window.__latestImaReferences = [];
+    const lang = langOf(question);
+    const mode = activeMode();
+    const endpoint = mode === 'simulation' ? '/api/simulate' : '/api/reason';
+    add(`<div style="padding:10px 14px;background:rgba(96,165,250,0.08);border:1px solid rgba(96,165,250,0.2);border-radius:8px;margin-bottom:14px;font-size:13px;color:#93c5fd"><b>❓ ${esc(question)}</b></div>`);
+
+    try {
+      const resp = await fetch(endpoint, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ question, mode, rounds: 3, lang })
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let currentStep = null;
+      while (true) {
+        const {done, value} = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, {stream:true});
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const raw = line.slice(6).trim();
+          if (!raw || raw === '[DONE]') continue;
+          let event;
+          try { event = JSON.parse(raw); } catch { continue; }
+
+          if (event.type === 'step_start') {
+            currentStep = event.step;
+            window.__fallbackReasoningSteps.push({step:event.step, title:event.title, content:''});
+            add(`<div id="fallback-step-${event.step}" class="reasoning-step">
+              <div class="step-header"><div class="step-number">${event.step}</div><div class="step-title">${esc(event.title)}</div></div>
+              <div class="step-body" id="fallback-step-body-${event.step}">${event.step > 0 ? '<span class="stream-placeholder">正在等待模型返回...</span>' : ''}</div>
+            </div>`);
+          } else if (event.type === 'step_content' || event.type === 'content') {
+            const step = event.step ?? currentStep;
+            const el = document.getElementById(`fallback-step-body-${step}`);
+            if (el) {
+              const ph = el.querySelector('.stream-placeholder');
+              if (ph) ph.remove();
+              el.innerHTML += fmt(event.content || '');
+              const last = window.__fallbackReasoningSteps[window.__fallbackReasoningSteps.length - 1];
+              if (last) last.content += event.content || '';
+              contentEl.scrollTop = contentEl.scrollHeight;
+            }
+          } else if (event.type === 'phase') {
+            if (event.phase === 'complete') {
+              add(`<div class="phase-indicator completed"><div class="spinner"></div>${esc(event.message || (lang === 'en' ? 'Multi-agent simulation completed' : '多智能体模拟完成'))}</div>`);
+            } else {
+              renderPhase(event.message || '');
+            }
+            window.__fallbackSimulationData.phaseMessages.push({phase:event.phase || '', message:event.message || ''});
+          } else if (event.type === 'agent_profile') {
+            const agent = event.agent || {};
+            window.__fallbackSimulationData.agents.push(agent);
+            window.__latestSimulationData = window.__fallbackSimulationData;
+            renderAgentProfile(agent);
+          } else if (event.type === 'round_start') {
+            window.__fallbackSimulationData.rounds.push({round:event.round, speeches:[], summary:''});
+            window.__latestSimulationData = window.__fallbackSimulationData;
+            renderRoundStart(event.round, lang);
+          } else if (event.type === 'agent_speaking') {
+            const msg = lang === 'en'
+              ? `Generating speech for ${event.agent_name || ''}...`
+              : `正在为 ${event.agent_name || ''} 生成发言...`;
+            renderPhase(msg);
+          } else if (event.type === 'agent_speech') {
+            renderAgentSpeech(event);
+            const current = window.__fallbackSimulationData.rounds[window.__fallbackSimulationData.rounds.length - 1];
+            if (current) current.speeches.push({
+              agent_name:event.agent_name || '',
+              agent_id:event.agent_id,
+              content:event.content || ''
+            });
+            window.__latestSimulationData = window.__fallbackSimulationData;
+          } else if (event.type === 'round_summarizing') {
+            const msg = lang === 'en'
+              ? `Summarizing Round ${event.round}...`
+              : `正在总结第${event.round}轮讨论...`;
+            renderPhase(msg);
+          } else if (event.type === 'round_summary') {
+            const round = window.__fallbackSimulationData.rounds.find(r => r.round === event.round);
+            const summary = event.summary || summarizeRoundLocal(round, lang);
+            renderRoundSummary({...event, summary}, lang);
+            if (round) round.summary = summary || '';
+            window.__latestSimulationData = window.__fallbackSimulationData;
+          } else if (event.type === 'coordinator_summary') {
+            window.__fallbackSimulationData.coordinatorSummary = event.content || '';
+            window.__latestSimulationData = window.__fallbackSimulationData;
+            const label = lang === 'en' ? '🎯 Coordinator Summary:' : '🎯 协调者总结：';
+            add(`<div class="coordinator-box"><b>${label}</b><br>${fmt(event.content || '')}</div>`);
+          } else if (event.type === 'prediction') {
+            window.__fallbackPredictionResult = event;
+            window.__latestPredictionResult = event;
+            window.__latestReasoningSteps = window.__fallbackReasoningSteps || [];
+            window.__latestSimulationData = window.__fallbackSimulationData;
+            if (mode === 'simulation') {
+              renderFinalPrediction(event, lang);
+              renderSimulationDetailList(event, lang);
+              renderReasoningLiteratureList(event, lang, question);
+            }
+          } else if (event.type === 'complete') {
+            if (mode === 'simulation') {
+              add(`<div class="phase-indicator completed"><div class="spinner"></div>${esc(event.message || (lang === 'en' ? 'Multi-agent simulation completed' : '多智能体模拟完成'))}</div>`);
+            } else {
+              window.__fallbackPredictionResult = event;
+              window.__latestPredictionResult = event;
+              renderReasoningLiteratureList(event, lang, question);
+              add(`<div class="phase-indicator completed"><div class="spinner"></div>${esc(lang === 'en' ? 'Reasoning completed' : '推理完成')}</div>`);
+            }
+          } else if (event.type === 'error') {
+            throw new Error(event.detail || event.message || '推演失败');
+          }
+        }
+      }
+    } catch (err) {
+      add(`<div style="color:#F87171;font-size:12px;padding:14px;background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.2);border-radius:8px;margin-top:10px">
+        <b>❌ 推演失败</b><br><span style="color:#fca5a5">${esc(err.message || '未知错误')}</span>
+      </div>`);
+    } finally {
+      running = false;
+      askBtn.disabled = false;
+    }
+  }
+
+  document.addEventListener('click', (e) => {
+    if (e.target && e.target.id === 'ask-btn') {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      runFallback();
+    } else if (e.target && e.target.classList && e.target.classList.contains('quick-q')) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      inputEl.value = e.target.textContent.trim();
+      runFallback(inputEl.value);
+    }
+  }, true);
+  inputEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      runFallback();
+    }
+  }, true);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang='zh-CN'>
+<head>
+<meta charset='UTF-8'>
+<meta name='viewport' content='width=device-width,initial-scale=1'>
+<title>量子计算研究地图 3D</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#050a14;color:#e2e8f0;font-family:-apple-system,'Segoe UI',sans-serif;overflow:hidden}
+#c{position:fixed;top:0;left:0;width:100%;height:100%;z-index:1}
+#sb{position:fixed;top:0;right:0;width:340px;height:100%;background:rgba(10,15,30,0.92);backdrop-filter:blur(12px);border-left:1px solid rgba(100,140,200,0.2);z-index:10;display:flex;flex-direction:column;transition:transform .3s}
+#sb.c{transform:translateX(100%)}
+#sh{padding:16px;border-bottom:1px solid rgba(100,140,200,0.15)}
+#sh h2{font-size:16px;margin-bottom:8px}
+#sq{width:100%;padding:8px 12px;background:rgba(30,40,70,0.8);border:1px solid rgba(100,140,200,0.3);border-radius:6px;color:#e2e8f0;font-size:13px}
+#fs{padding:12px 16px;border-bottom:1px solid rgba(100,140,200,0.1);max-height:200px;overflow-y:auto}
+.fg{margin-bottom:8px}
+.fg l{font-size:11px;color:#8899bb;display:block;margin-bottom:4px}
+.fb{display:inline-block;padding:3px 8px;margin:2px;font-size:11px;border-radius:4px;cursor:pointer;border:1px solid rgba(100,140,200,0.3);background:rgba(30,40,70,0.5);color:#aabbdd;transition:.2s}
+.fb.a{background:rgba(100,140,255,0.3);border-color:rgba(100,140,255,0.6);color:#fff}
+#dp{flex:1;overflow-y:auto;padding:16px}
+#hi{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:rgba(10,15,30,0.8);padding:8px 16px;border-radius:8px;font-size:12px;color:#8899bb;z-index:5;pointer-events:none}
+#ld{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:100;color:#aabbdd;font-size:14px}
+#tb{position:fixed;top:50%;right:340px;transform:translateY(-50%);width:24px;height:48px;background:rgba(10,15,30,0.8);border:1px solid rgba(100,140,200,0.3);border-right:none;border-radius:6px 0 0 6px;color:#aabbdd;cursor:pointer;z-index:11;display:flex;align-items:center;justify-content:center;font-size:14px;transition:right .3s}
+#tb.c{right:0}
+</style>
+</head>
+<body>
+<div id='ld'>正在加载 3D 研究地图...</div>
+<div id='c'></div>
+<div id='hi'>拖拽旋转 | 滚轮缩放 | 点击节点 | R=旋转 F=正面 T=俯视 0=重置</div>
+<button id='tb' onclick='tsb()'>◀</button>
+<div id='sb'>
+  <div id='sh'><h2>量子计算研究地图</h2><input id='sq' placeholder='搜索...' oninput='os(this.value)'></div>
+  <div id='fs'>
+    <div class='fg'><l>研究领域</l>
+      <span class='fb a' onclick='fd("量子物理基础",this)' style='color:#F59E0B'>量子</span>
+      <span class='fb a' onclick='fd("量子计算基础",this)' style='color:#3B82F6'>量子</span>
+      <span class='fb a' onclick='fd("量子算法",this)' style='color:#EF4444'>量子</span>
+      <span class='fb a' onclick='fd("量子纠错",this)' style='color:#A855F7'>量子</span>
+      <span class='fb a' onclick='fd("量子硬件",this)' style='color:#2563EB'>量子</span>
+      <span class='fb a' onclick='fd("量子软件",this)' style='color:#10B981'>量子</span>
+      <span class='fb a' onclick='fd("量子应用",this)' style='color:#06B6D4'>量子</span>
+      <span class='fb a' onclick='fd("量子产业",this)' style='color:#F97316'>量子</span>
+    </div>
+    <div class='fg'><l>难度</l>
+      <span class='fb a' onclick='fdi(0,this)'>全部</span>
+      <span class='fb ' onclick='fdi(1,this)'>入门</span>
+      <span class='fb ' onclick='fdi(2,this)'>中级</span>
+      <span class='fb ' onclick='fdi(3,this)'>高级</span>
+      <span class='fb ' onclick='fdi(4,this)'>研究级</span>
+    </div>
+    <div class='fg'><l>演进路径</l>
+      <span class='fb' onclick='fp("ep_algo",this)' style='color:#FF6B6B'>量子</span>
+      <span class='fb' onclick='fp("ep_nisq",this)' style='color:#4ECDC4'>NI</span>
+      <span class='fb' onclick='fp("ep_qec",this)' style='color:#C084FC'>量子</span>
+      <span class='fb' onclick='fp("ep_hardware",this)' style='color:#60A5FA'>量子</span>
+      <span class='fb' onclick='fp("ep_qcrypto",this)' style='color:#FBBF24'>量子</span>
+      <span class='fb' onclick='fp("ep_software",this)' style='color:#34D399'>量子</span>
+      <span class='fb' onclick='fp("ep_entanglement",this)' style='color:#A78BFA'>纠缠</span>
+    </div>
+  </div>
+  <div id='dp'><p style='color:#667;font-size:13px'>点击球体节点查看详情</p><p style='color:#556;font-size:11px;margin-top:8px'>58概念 | 7路径 | 15文献</p></div>
+</div>
+<script defer src='https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js'></script>
+<script>
+// Wait for THREE to be available
+function waitForTHREE(cb) {
+  if (typeof THREE !== 'undefined') { cb(); return; }
+  setTimeout(() => waitForTHREE(cb), 50);
+}
+const CONCEPTS = [{"id": "c_qm", "name": "量子力学", "domain": "量子物理基础", "difficulty": 1, "difficulty_label": "入门", "evidence": "双缝实验、薛定谔方程、贝尔不等式实验验证", "sources": ["Dirac (1930)", "Sakurai (1994)"], "evolution_path": null, "lat": 78.8, "lon": -180, "x": -0.3496218321959496, "y": 1.7657192796285448, "z": -4.281632577108027e-17}, {"id": "c_entanglement", "name": "量子纠缠", "domain": "量子物理基础", "difficulty": 1, "difficulty_label": "入门", "evidence": "EPR佯谬→Bell不等式→Aspect实验→2022诺贝尔奖", "sources": ["Einstein(1935)", "Bell(1964)", "Aspect(1982)"], "evolution_path": "ep_entanglement", "lat": 73.8, "lon": -95, "x": -0.04376821872031148, "y": 1.7285286342184976, "z": -0.500273029171858}, {"id": "c_measurement", "name": "量子测量", "domain": "量子物理基础", "difficulty": 2, "difficulty_label": "中级", "evidence": "POVM形式化、弱测量实验验证", "sources": ["Nielsen&Chuang(2000)", "Wiseman(2009)"], "evolution_path": "ep_entanglement", "lat": 71.3, "lon": 127, "x": -0.34730948583389926, "y": 1.7049784999428519, "z": 0.46089525467552306}, {"id": "c_decoherence", "name": "退相干", "domain": "量子物理基础", "difficulty": 2, "difficulty_label": "中级", "evidence": "Zurek理论(1981)；离子阱实验验证", "sources": ["Zurek(1981)", "Myatt(2000)"], "evolution_path": null, "lat": 68.8, "lon": 12, "x": 0.6366999700659467, "y": 1.678182842187922, "z": 0.13533475645262363}, {"id": "c_qinfo", "name": "量子信息论", "domain": "量子物理基础", "difficulty": 2, "difficulty_label": "中级", "evidence": "Holevo定理(1973)、量子信道容量", "sources": ["Holevo(1973)", "Wilde(2013)"], "evolution_path": null, "lat": 66.3, "lon": -83, "x": 0.08817320092359733, "y": 1.6481926680112098, "z": -0.718113093985186}, {"id": "c_qubit", "name": "量子比特", "domain": "量子计算基础", "difficulty": 1, "difficulty_label": "入门", "evidence": "Bloch球表示，量子vs经典比特", "sources": ["Nielsen&Chuang(2000)", "Mermin(2007)"], "evolution_path": null, "lat": 63.8, "lon": 95, "x": -0.06926358694950506, "y": 1.615065065413791, "z": 0.7916864215097003}, {"id": "c_qgate", "name": "量子门", "domain": "量子计算基础", "difficulty": 1, "difficulty_label": "入门", "evidence": "Clifford+T通用门集", "sources": ["Nielsen&Chuang(2000)", "Bravyi&Kitaev(2005)"], "evolution_path": null, "lat": 61.3, "lon": -175, "x": -0.8611129836935635, "y": 1.5788630946700597, "z": -0.07533762408817067}, {"id": "c_qcircuit", "name": "量子电路", "domain": "量子计算基础", "difficulty": 1, "difficulty_label": "入门", "evidence": "量子电路模型，QASM标准", "sources": ["Deutsch(1989)", "Cross(2017)"], "evolution_path": null, "lat": 58.8, "lon": -85, "x": 0.08126825177747382, "y": 1.539655668288912, "z": -0.9289003683705036}, {"id": "c_superposition", "name": "量子叠加", "domain": "量子计算基础", "difficulty": 1, "difficulty_label": "入门", "evidence": "双缝实验、叠加原理", "sources": ["Feynman(1982)", "Aaronson(2013)"], "evolution_path": null, "lat": 56.3, "lon": 5, "x": 0.9949195384010049, "y": 1.4975174198348686, "z": 0.08704418073053313}, {"id": "c_deutsch", "name": "Deutsch算法", "domain": "量子算法", "difficulty": 2, "difficulty_label": "中级", "evidence": "首个量子优势算法(1985)", "sources": ["Deutsch(1985)", "Deutsch&Jozsa(1992)"], "evolution_path": "ep_algo", "lat": 53.8, "lon": -13, "x": 1.035843268718437, "y": 1.4525285618588435, "z": -0.2391432617386161}, {"id": "c_simon", "name": "Simon算法", "domain": "量子算法", "difficulty": 2, "difficulty_label": "中级", "evidence": "Shor前身，指数加速", "sources": ["Simon(1994)"], "evolution_path": "ep_algo", "lat": 51.3, "lon": -103, "x": -0.2531681905742564, "y": 1.4047747332089935, "z": -1.0965919096085646}, {"id": "c_shor", "name": "Shor算法", "domain": "量子算法", "difficulty": 3, "difficulty_label": "高级", "evidence": "大数因式分解，威胁RSA", "sources": ["Shor(1994)", "Shor(1997)"], "evolution_path": "ep_algo", "lat": 48.8, "lon": -168, "x": -1.1597319270787196, "y": 1.3543468360123039, "z": -0.24650863087880143}, {"id": "c_grover", "name": "Grover搜索", "domain": "量子算法", "difficulty": 2, "difficulty_label": "中级", "evidence": "无序数据库平方根加速", "sources": ["Grover(1996)", "Bennett(1997)"], "evolution_path": "ep_algo", "lat": 46.3, "lon": 98, "x": -0.17307404558699938, "y": 1.3013408626372227, "z": 1.2314858237002806}, {"id": "c_vqe", "name": "VQE", "domain": "量子算法", "difficulty": 3, "difficulty_label": "高级", "evidence": "变分量子本征求解器", "sources": ["Peruzzo(2014)", "McClean(2016)"], "evolution_path": "ep_nisq", "lat": 43.8, "lon": 30, "x": 1.1251128473539789, "y": 1.2458577129667323, "z": 0.6495842052885259}, {"id": "c_qaoa", "name": "QAOA", "domain": "量子算法", "difficulty": 3, "difficulty_label": "高级", "evidence": "量子近似优化算法", "sources": ["Farhi(2014)", "Zhou(2018)"], "evolution_path": "ep_nisq", "lat": 41.3, "lon": -38, "x": 1.065607588799645, "y": 1.1880030023296861, "z": -0.8325438926256432}, {"id": "c_qml", "name": "量子机器学习", "domain": "量子算法", "difficulty": 3, "difficulty_label": "高级", "evidence": "量子核方法、量子神经网络", "sources": ["Schuld(2014)", "Biamonte(2017)"], "evolution_path": "ep_nisq", "lat": 38.8, "lon": -105, "x": -0.36307351421227085, "y": 1.127886860456029, "z": -1.3550088019227753}, {"id": "c_hhl", "name": "HHL算法", "domain": "量子算法", "difficulty": 4, "difficulty_label": "研究级", "evidence": "量子线性方程求解，指数加速", "sources": ["Harrow(2009)", "Childs(2017)"], "evolution_path": "ep_algo", "lat": 36.3, "lon": 158, "x": -1.3450386442312237, "y": 1.065623721838595, "z": 0.5434308870311778}, {"id": "c_qsvt", "name": "QSVT", "domain": "量子算法", "difficulty": 4, "difficulty_label": "研究级", "evidence": "量子信号处理→统一框架", "sources": ["Gilyén(2019)", "Martyn(2021)"], "evolution_path": "ep_algo", "lat": 33.8, "lon": 90, "x": 9.158962233941714e-17, "y": 1.0013321079005486, "z": 1.495772044693791}, {"id": "c_qec", "name": "量子纠错", "domain": "量子纠错", "difficulty": 2, "difficulty_label": "中级", "evidence": "Shor码、Steane码、CSS码", "sources": ["Shor(1995)", "Steane(1996)"], "evolution_path": "ep_qec", "lat": 30.0, "lon": 23, "x": 1.4349250573140333, "y": 0.9000000000000002, "z": 0.6090895499779309}, {"id": "c_qec_thresh", "name": "阈值定理", "domain": "量子纠错", "difficulty": 3, "difficulty_label": "高级", "evidence": "容错阈值~1%", "sources": ["Aharonov(1997)", "Knill(1998)"], "evolution_path": "ep_qec", "lat": 26.3, "lon": -45, "x": 1.1410409414985347, "y": 0.7975281434835233, "z": -1.1410409414985345}, {"id": "c_surface_code", "name": "表面码", "domain": "量子纠错", "difficulty": 3, "difficulty_label": "高级", "evidence": "Kitaev(2003)，Google(2023)", "sources": ["Kitaev(2003)", "Google(2023)"], "evolution_path": "ep_qec", "lat": 22.5, "lon": -113, "x": -0.6497792861873, "y": 0.6888301782571618, "z": -1.5307840686276197}, {"id": "c_decoder", "name": "译码器", "domain": "量子纠错", "difficulty": 3, "difficulty_label": "高级", "evidence": "MWPM、UF译码器", "sources": ["Dennis(2002)", "Delfosse(2017)"], "evolution_path": "ep_qec", "lat": 18.8, "lon": -180, "x": -1.7039686682082535, "y": 0.5800782514149201, "z": -2.086759775368616e-16}, {"id": "c_ftqc", "name": "容错量子计算", "domain": "量子纠错", "difficulty": 3, "difficulty_label": "高级", "evidence": "容错门、魔术态制备", "sources": ["Gottesman(1998)", "Campbell(2017)"], "evolution_path": "ep_qec", "lat": 15.0, "lon": -248, "x": -0.6513159299014767, "y": 0.46587428118453733, "z": 1.6120634955197533}, {"id": "c_logical", "name": "逻辑量子比特", "domain": "量子纠错", "difficulty": 4, "difficulty_label": "研究级", "evidence": "Google 2023 Nature, break-even", "sources": ["Google(2023)", "AWS(2024)"], "evolution_path": "ep_qec", "lat": 11.3, "lon": -315, "x": 1.2481186946206333, "y": 0.35270305963653187, "z": 1.248118694620634}, {"id": "c_ldpc", "name": "LDPC码", "domain": "量子纠错", "difficulty": 4, "difficulty_label": "研究级", "evidence": "常数开销量子纠错", "sources": ["Panteleev(2021)", "Leverrier(2022)"], "evolution_path": "ep_qec", "lat": 7.5, "lon": -383, "x": 1.6427336522851341, "y": 0.2349471459960931, "z": -0.6972990651350643}, {"id": "c_supercond", "name": "超导量子", "domain": "量子硬件", "difficulty": 2, "difficulty_label": "中级", "evidence": "Transmon qubit, IBM/Google路线图", "sources": ["Koch(2007)", "IBM(2023)"], "evolution_path": "ep_hardware", "lat": -3.8, "lon": -450, "x": 5.498794684477747e-16, "y": -0.11929302072000031, "z": -1.79604264292569}, {"id": "c_ion", "name": "离子阱", "domain": "量子硬件", "difficulty": 2, "difficulty_label": "中级", "evidence": "最高保真度门", "sources": ["Häffner(2008)", "Monroe(2013)"], "evolution_path": "ep_hardware", "lat": -7.5, "lon": -518, "x": -1.654653002686207, "y": -0.2349471459960929, "z": -0.6685232077421169}, {"id": "c_photonic", "name": "光量子", "domain": "量子硬件", "difficulty": 3, "difficulty_label": "高级", "evidence": "九章光量子优势", "sources": ["Zhong(2020)", "Madsen(2022)"], "evolution_path": "ep_hardware", "lat": -11.3, "lon": -585, "x": -1.2481186946206333, "y": -0.35270305963653165, "z": 1.2481186946206344}, {"id": "c_neutral", "name": "中性原子", "domain": "量子硬件", "difficulty": 3, "difficulty_label": "高级", "evidence": "可扩展中性原子阵列", "sources": ["Browaeys(2020)", "Ebadi(2021)"], "evolution_path": "ep_hardware", "lat": -15.0, "lon": -653, "x": 0.6793511186571506, "y": -0.46587428118453755, "z": 1.6004509401134634}, {"id": "c_divincenzo", "name": "DiVincenzo判据", "domain": "量子硬件", "difficulty": 2, "difficulty_label": "中级", "evidence": "量子计算机物理实现7条判据", "sources": ["DiVincenzo(2000)"], "evolution_path": "ep_hardware", "lat": -18.8, "lon": -720, "x": 1.7039686682082535, "y": -0.5800782514149199, "z": 8.347039101474464e-16}, {"id": "c_control", "name": "量子测控", "domain": "量子硬件", "difficulty": 3, "difficulty_label": "高级", "evidence": "低温CMOS控制", "sources": ["Vandersypen(2004)", "Krinner(2022)"], "evolution_path": null, "lat": -22.5, "lon": -788, "x": 0.6229644559213289, "y": -0.6888301782571615, "z": -1.5418911349965176}, {"id": "c_engineering", "name": "量子工程化", "domain": "量子硬件", "difficulty": 3, "difficulty_label": "高级", "evidence": "量子计算工程化路线图", "sources": ["Awschalom(2019)", "NSF(2021)"], "evolution_path": "ep_hardware", "lat": -26.3, "lon": -855, "x": -1.141040941498535, "y": -0.7975281434835231, "z": -1.141040941498534}, {"id": "c_topological", "name": "拓扑量子", "domain": "量子硬件", "difficulty": 4, "difficulty_label": "研究级", "evidence": "Majorana零模、拓扑量子计算", "sources": ["Kitaev(2001)", "Nayak(2008)"], "evolution_path": "ep_hardware", "lat": -30.0, "lon": -923, "x": -1.434925057314034, "y": -0.8999999999999997, "z": 0.6090895499779299}, {"id": "c_compile", "name": "量子编译", "domain": "量子软件", "difficulty": 3, "difficulty_label": "高级", "evidence": "量子电路优化、映射", "sources": ["Nash(2020)", "Li(2017)"], "evolution_path": "ep_software", "lat": -33.8, "lon": -990, "x": 1.6495390560419239e-15, "y": -1.0013321079005488, "z": 1.4957720446937908}, {"id": "c_calib", "name": "量子校准", "domain": "量子软件", "difficulty": 3, "difficulty_label": "高级", "evidence": "自动校准、门集断层", "sources": ["Flammia(2020)", "Merkel(2013)"], "evolution_path": "ep_software", "lat": -37.5, "lon": -1058, "x": 1.3240519345523936, "y": -1.0957705722156972, "z": 0.5349517059269443}, {"id": "c_qos", "name": "量子操作系统", "domain": "量子软件", "difficulty": 3, "difficulty_label": "高级", "evidence": "量子云计算操作系统", "sources": ["Microsoft(2021)", "Amazon(2022)"], "evolution_path": "ep_software", "lat": -41.3, "lon": -1125, "x": 0.9562031338726228, "y": -1.1880030023296868, "z": -0.9562031338726231}, {"id": "c_codesign", "name": "软硬协同设计", "domain": "量子软件", "difficulty": 4, "difficulty_label": "研究级", "evidence": "量子系统架构协同优化", "sources": ["Leung(2022)", "Intel(2023)"], "evolution_path": "ep_software", "lat": -45.0, "lon": -1193, "x": -0.4973195350357889, "y": -1.2727922061357855, "z": -1.1716114031844294}, {"id": "c_qchem", "name": "量子化学", "domain": "量子应用", "difficulty": 3, "difficulty_label": "高级", "evidence": "量子相估计用于分子基态", "sources": ["Aspuru(2005)", "Cao(2019)"], "evolution_path": "ep_nisq", "lat": -48.8, "lon": -1260, "x": -1.1856410282136247, "y": -1.354346836012304, "z": -1.0163940430977146e-15}, {"id": "c_qfinance", "name": "量子金融", "domain": "量子应用", "difficulty": 3, "difficulty_label": "高级", "evidence": "量子蒙特卡洛在金融中应用", "sources": ["Orus(2019)", "Egger(2020)"], "evolution_path": "ep_nisq", "lat": -52.5, "lon": -1328, "x": -0.4104828812231272, "y": -1.428036012524223, "z": 1.0159807828678047}, {"id": "c_qai", "name": "量子AI", "domain": "量子应用", "difficulty": 4, "difficulty_label": "研究级", "evidence": "量子深度学习", "sources": ["Cong(2019)", "Gao(2018)"], "evolution_path": "ep_nisq", "lat": -56.3, "lon": -1395, "x": 0.7062016628736845, "y": -1.4975174198348686, "z": 0.706201662873687}, {"id": "c_qsensing", "name": "量子传感", "domain": "量子应用", "difficulty": 2, "difficulty_label": "中级", "evidence": "量子增强传感", "sources": ["Degen(2017)", "Giovannetti(2004)"], "evolution_path": null, "lat": -60.0, "lon": -1463, "x": 0.8284543681071965, "y": -1.5588457268119897, "z": -0.35165801564034543}, {"id": "c_qcrypto", "name": "量子密码", "domain": "量子应用", "difficulty": 2, "difficulty_label": "中级", "evidence": "BB84协议、NIST PQC标准", "sources": ["Bennett(1984)", "NIST(2024)"], "evolution_path": "ep_qcrypto", "lat": -63.8, "lon": -1530, "x": -5.844357382132048e-16, "y": -1.6150650654137915, "z": -0.7947105350251408}, {"id": "c_teleport", "name": "量子隐形传态", "domain": "量子应用", "difficulty": 2, "difficulty_label": "中级", "evidence": "量子隐形传态协议", "sources": ["Bennett(1993)", "Pan(2012)"], "evolution_path": "ep_qcrypto", "lat": -67.5, "lon": -1598, "x": -0.638672219818402, "y": -1.662983158520316, "z": -0.25804032651899217}, {"id": "c_pqc", "name": "后量子密码", "domain": "量子应用", "difficulty": 3, "difficulty_label": "高级", "evidence": "NIST后量子密码标准化", "sources": ["Chen(2016)", "Bernstein(2009)"], "evolution_path": "ep_qcrypto", "lat": -71.3, "lon": -1665, "x": -0.4080737156033346, "y": -1.7049784999428519, "z": 0.4080737156033344}, {"id": "c_ecosystem", "name": "量子产业生态", "domain": "量子产业", "difficulty": 1, "difficulty_label": "入门", "evidence": "IBM/Google/Rigetti/IonQ/PsiQuantum", "sources": ["McKinsey(2023)", "BCG(2022)"], "evolution_path": null, "lat": -75.0, "lon": -1733, "x": 0.18203158362136393, "y": -1.7386664873203228, "z": 0.42883953692903387}, {"id": "c_market", "name": "量子市场", "domain": "量子产业", "difficulty": 1, "difficulty_label": "入门", "evidence": "量子计算市场规模预测", "sources": ["IDC(2025)", "Goldman(2021)"], "evolution_path": null, "lat": -78.8, "lon": -1800, "x": 0.3496218321959495, "y": -1.7657192796285448, "z": 4.281632577108026e-16}];
+const EVOLUTION_PATHS = [{"id": "ep_algo", "name": "量子算法演进", "desc": "从早期量子算法到统一框架", "color": "#FF6B6B", "steps": [["c_deutsch", 1992, "Deutsch"], ["c_simon", 1994, "Simon"], ["c_shor", 1994, "Shor"], ["c_grover", 1996, "Grover"], ["c_hhl", 2009, "HHL"], ["c_qsvt", 2019, "QSVT"]]}, {"id": "ep_nisq", "name": "NISQ应用演进", "desc": "变分量子算法与近期应用", "color": "#4ECDC4", "steps": [["c_vqe", 2014, "VQE"], ["c_qaoa", 2014, "QAOA"], ["c_qml", 2017, "QML"], ["c_qchem", 2019, "量子化学"], ["c_qfinance", 2020, "量子金融"], ["c_qai", 2021, "量子AI"]]}, {"id": "ep_qec", "name": "量子纠错演进", "desc": "从Shor码到LDPC码", "color": "#C084FC", "steps": [["c_qec", 1995, "Shor码"], ["c_qec_thresh", 1997, "阈值定理"], ["c_surface_code", 2003, "表面码"], ["c_decoder", 2012, "译码器"], ["c_ftqc", 2017, "容错"], ["c_logical", 2023, "逻辑量子比特"], ["c_ldpc", 2024, "LDPC"]]}, {"id": "ep_hardware", "name": "量子硬件演进", "desc": "物理实现平台代际演进", "color": "#60A5FA", "steps": [["c_divincenzo", 2000, "DiVincenzo"], ["c_supercond", 2007, "超导"], ["c_ion", 2014, "离子阱"], ["c_photonic", 2020, "光量子"], ["c_neutral", 2023, "中性原子"], ["c_engineering", 2024, "工程化"], ["c_topological", 2025, "拓扑"]]}, {"id": "ep_qcrypto", "name": "量子密码演进", "desc": "从BB84到PQC标准", "color": "#FBBF24", "steps": [["c_qcrypto", 1984, "BB84"], ["c_teleport", 1993, "隐形传态"], ["c_teleport", 2017, "墨子号"], ["c_ecosystem", 2018, "国家战略"], ["c_pqc", 2024, "PQC标准"]]}, {"id": "ep_software", "name": "量子软件栈演进", "desc": "从编译到操作系统", "color": "#34D399", "steps": [["c_compile", 2017, "编译"], ["c_calib", 2019, "校准"], ["c_qos", 2021, "OS"], ["c_codesign", 2022, "协同设计"]]}, {"id": "ep_entanglement", "name": "纠缠与测量演进", "desc": "EPR到诺贝尔奖", "color": "#A78BFA", "steps": [["c_entanglement", 1935, "EPR"], ["c_measurement", 1964, "Bell"], ["c_measurement", 1982, "Aspect"], ["c_decoherence", 2022, "诺贝尔奖"]]}];
+const DOCUMENTS = [{"id": "d01", "name": "Nielsen&Chuang 量子计算与量子信息", "type": "教材", "related": ["c_qubit", "c_qgate", "c_qec", "c_shor", "c_grover"]}, {"id": "d02", "name": "量子纠错白皮书", "type": "报告", "related": ["c_surface_code", "c_qec", "c_qec_thresh", "c_logical"]}, {"id": "d03", "name": "Preskill量子信息导论", "type": "讲义", "related": ["c_qinfo", "c_qec", "c_ftqc", "c_entanglement"]}, {"id": "d04", "name": "量子算法综述", "type": "综述", "related": ["c_shor", "c_grover", "c_hhl", "c_vqe", "c_qsvt"]}, {"id": "d05", "name": "超导量子计算进展", "type": "综述", "related": ["c_supercond", "c_qgate", "c_control"]}, {"id": "d06", "name": "量子机器学习教程", "type": "教程", "related": ["c_qml", "c_qai", "c_vqe"]}, {"id": "d07", "name": "量子化学模拟入门", "type": "教程", "related": ["c_qchem", "c_vqe"]}, {"id": "d08", "name": "第二届量子会议论文集", "type": "会议", "related": ["c_ecosystem", "c_market", "c_supercond", "c_ion"]}, {"id": "d09", "name": "量子金融白皮书", "type": "报告", "related": ["c_qfinance", "c_hhl"]}, {"id": "d10", "name": "表面码实现详解", "type": "教程", "related": ["c_surface_code", "c_decoder", "c_logical"]}, {"id": "d11", "name": "拓扑量子计算导论", "type": "教程", "related": ["c_topological", "c_surface_code"]}, {"id": "d12", "name": "量子密码学基础", "type": "教程", "related": ["c_qcrypto", "c_pqc", "c_teleport"]}, {"id": "d13", "name": "离子阱综述", "type": "综述", "related": ["c_ion", "c_qgate", "c_control"]}, {"id": "d14", "name": "NISQ算法与应用", "type": "综述", "related": ["c_vqe", "c_qaoa", "c_qml", "c_qchem"]}, {"id": "d15", "name": "后量子密码进展", "type": "报告", "related": ["c_pqc", "c_qcrypto"]}];
+const DOMAIN_COLORS = {"量子物理基础": "#F59E0B", "量子计算基础": "#3B82F6", "量子算法": "#EF4444", "量子纠错": "#A855F7", "量子硬件": "#2563EB", "量子软件": "#10B981", "量子应用": "#06B6D4", "量子产业": "#F97316"};
+const DIFF_COLORS = {"1": "#22C55E", "2": "#F59E0B", "3": "#EF4444", "4": "#9333EA"};
+
+let scene, camera, renderer, globeGroup;
+let conceptMeshes = [], pathLines = [], docMeshes = [];
+let raycaster = new THREE.Raycaster();
+let mouse = new THREE.Vector2();
+let selectedNodeId = null;
+let autoRotate = true;
+let isDragging = false, prevMX = 0, prevMY = 0;
+let rotX = 0.3, rotY = 0.5, zoomL = 5.5;
+
+function init() {
+  const container = document.getElementById('c');
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x050a14);
+  scene.fog = new THREE.FogExp2(0x050a14, 0.00008);
+  camera = new THREE.PerspectiveCamera(50, window.innerWidth/window.innerHeight, 0.5, 50);
+  camera.position.set(3, 1.8, 5.5);
+  renderer = new THREE.WebGLRenderer({antialias:true,alpha:true});
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+  container.appendChild(renderer.domElement);
+
+  scene.add(new THREE.AmbientLight(0x334466,0.6));
+  const dl = new THREE.DirectionalLight(0xffffff,1.0); dl.position.set(5,5,5); scene.add(dl);
+  const pl = new THREE.PointLight(0x4488cc,0.5,20); pl.position.set(-3,2,-2); scene.add(pl);
+
+  // Stars
+  const sg = new THREE.BufferGeometry();
+  const sp = new Float32Array(2000*3);
+  for(let i=0;i<2000;i++){const r=15+Math.random()*15,th=Math.random()*Math.PI*2,ph=Math.acos(2*Math.random()-1);sp[i*3]=r*Math.sin(ph)*Math.cos(th);sp[i*3+1]=r*Math.sin(ph)*Math.sin(th);sp[i*3+2]=r*Math.cos(ph);}
+  sg.setAttribute('position',new THREE.Float32BufferAttribute(sp,3));
+  scene.add(new THREE.Points(sg,new THREE.PointsMaterial({color:0x6088c0,size:0.03,blending:THREE.AdditiveBlending,depthWrite:false,transparent:true,opacity:0.8})));
+
+  // Globe
+  globeGroup = new THREE.Group(); scene.add(globeGroup);
+  const gg = new THREE.SphereGeometry(1.78,64,48);
+  const gm = new THREE.MeshPhongMaterial({color:0x0a1a3a,emissive:0x020810,specular:0x1a3050,shininess:30,transparent:true,opacity:0.75});
+  globeGroup.add(new THREE.Mesh(gg,gm));
+  const wg = new THREE.SphereGeometry(1.8,48,24);
+  const wm = new THREE.MeshBasicMaterial({color:0x1a3a5c,wireframe:true,transparent:true,opacity:0.12});
+  globeGroup.add(new THREE.Mesh(wg,wm));
+  for(let lat=-60;lat<=60;lat+=30)globeGroup.add(mkLatLine(lat));
+  for(let lon=-150;lon<=180;lon+=30)globeGroup.add(mkLonLine(lon));
+  const rg=new THREE.TorusGeometry(1.83,0.015,16,100),rm=new THREE.MeshBasicMaterial({color:0x3060a0,transparent:true,opacity:0.2});
+  const rr=new THREE.Mesh(rg,rm);rr.rotation.x=Math.PI/2;globeGroup.add(rr);
+
+  // Concept nodes
+  CONCEPTS.forEach(c=>{
+    const col=new THREE.Color(DOMAIN_COLORS[c.domain]||'#888');
+    const mesh=new THREE.Mesh(new THREE.SphereGeometry(0.06,16,12),new THREE.MeshPhongMaterial({color:col,emissive:col,emissiveIntensity:0.4,shininess:80}));
+    mesh.position.set(c.x,c.y,c.z); mesh.userData={id:c.id,type:'concept'};
+    globeGroup.add(mesh); conceptMeshes.push(mesh);
+    const sm=new THREE.SpriteMaterial({color:col,blending:THREE.AdditiveBlending,depthWrite:false,transparent:true,opacity:0.3});
+    const ss=new THREE.Sprite(sm); ss.scale.set(0.2,0.2,1); mesh.add(ss);
+    // Label
+    const cv=document.createElement('canvas');cv.width=256;cv.height=64;const cx=cv.getContext('2d');
+    cx.fillStyle='#'+col.getHexString();cx.font='bold 28px sans-serif';cx.textAlign='center';cx.fillText(c.name,128,40);
+    const tx=new THREE.CanvasTexture(cv);
+    const ml=new THREE.SpriteMaterial({map:tx,depthWrite:false,depthTest:false,transparent:true,opacity:0.85});
+    const sl=new THREE.Sprite(ml);sl.scale.set(0.5,0.125,1);sl.position.set(0,0.12,0);mesh.add(sl);
+  });
+
+  // Evolution paths
+  EVOLUTION_PATHS.forEach(ep=>{
+    const pts=[];
+    ep.steps.forEach(([cid])=>{const cc=CONCEPTS.find(c=>c.id===cid);if(cc)pts.push(new THREE.Vector3(cc.x,cc.y,cc.z));});
+    if(pts.length>=2){
+      const curve=new THREE.CatmullRomCurve3(pts,false,'centripetal',0.5);
+      const cpts=curve.getPoints(pts.length*8);
+      const lg=new THREE.BufferGeometry().setFromPoints(cpts);
+      const lm=new THREE.LineBasicMaterial({color:new THREE.Color(ep.color),transparent:true,opacity:0.5});
+      const ln=new THREE.Line(lg,lm); globeGroup.add(ln);
+      pathLines.push({line:ln,epId:ep.id});
+    }
+  });
+
+  // Document nodes
+  DOCUMENTS.forEach((d,i)=>{
+    const ang=(i/DOCUMENTS.length)*Math.PI*2;
+    const mesh=new THREE.Mesh(new THREE.BoxGeometry(0.08,0.1,0.04),new THREE.MeshPhongMaterial({color:0xaaa66,emissive:0x44422,emissiveIntensity:0.3}));
+    mesh.position.set(2.8*Math.cos(ang),0.3*Math.sin(ang*2),2.8*Math.sin(ang));
+    mesh.userData={id:d.id,type:'doc'}; scene.add(mesh); docMeshes.push(mesh);
+  });
+
+  // Events
+  window.addEventListener('resize',()=>{camera.aspect=window.innerWidth/window.innerHeight;camera.updateProjectionMatrix();renderer.setSize(window.innerWidth,window.innerHeight);});
+  container.addEventListener('click',onClick);
+  container.addEventListener('mousemove',onMouseMove);
+  container.addEventListener('mousedown',e=>{isDragging=true;prevMX=e.clientX;prevMY=e.clientY;});
+  container.addEventListener('mousemove',e=>{if(!isDragging)return;rotY+=(e.clientX-prevMX)*0.005;rotX+=(e.clientY-prevMY)*0.005;prevMX=e.clientX;prevMY=e.clientY;});
+  container.addEventListener('mouseup',()=>isDragging=false);
+  container.addEventListener('mouseleave',()=>isDragging=false);
+  container.addEventListener('wheel',e=>{zoomL=Math.max(2,Math.min(15,zoomL+e.deltaY*0.005));e.preventDefault();},{passive:false});
+  document.addEventListener('keydown',e=>{
+    if(e.key==='r'||e.key==='R')autoRotate=!autoRotate;
+    if(e.key==='f'||e.key==='F'){rotX=0.3;rotY=0.5;zoomL=5.5;}
+    if(e.key==='t'||e.key==='T'){rotX=Math.PI/2-0.01;rotY=0;zoomL=7;}
+    if(e.key==='0'){rotX=0.3;rotY=0.5;zoomL=5.5;afd=null;afdi=null;afp=null;os('');document.querySelectorAll('.fb').forEach(b=>b.classList.remove('a'));document.querySelectorAll('.fg')[0].querySelectorAll('.fb')[0].classList.add('a');document.querySelectorAll('.fg')[1].querySelectorAll('.fb')[0].classList.add('a');document.querySelectorAll('.fg')[2].querySelectorAll('.fb')[0].classList.add('a');applyF();}
+  });
+
+  document.getElementById('ld').style.display='none';
+  animate();
+}
+
+function mkLatLine(lat){
+  const phi=Math.PI/2-(lat*Math.PI/180),r=1.8*Math.cos(phi),y=1.8*Math.sin(phi),pts=[];
+  for(let i=0;i<=128;i++){const th=(i/128)*Math.PI*2;pts.push(new THREE.Vector3(r*Math.cos(th),y,r*Math.sin(th)));}
+  return new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),new THREE.LineBasicMaterial({color:0x1a3050,transparent:true,opacity:0.25}));
+}
+function mkLonLine(lon){
+  const th=lon*Math.PI/180,pts=[];
+  for(let i=0;i<=128;i++){const phi=(i/128)*Math.PI;pts.push(new THREE.Vector3(1.8*Math.sin(phi)*Math.cos(th),1.8*Math.cos(phi),1.8*Math.sin(phi)*Math.sin(th)));}
+  return new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),new THREE.LineBasicMaterial({color:0x1a3050,transparent:true,opacity:0.25}));
+}
+
+function updateCamera(){
+  camera.position.set(zoomL*Math.cos(rotX)*Math.sin(rotY),zoomL*Math.sin(rotX),zoomL*Math.cos(rotX)*Math.cos(rotY));
+  camera.lookAt(0,0,0);
+  if(autoRotate&&!isDragging)rotY+=0.002;
+}
+
+function onClick(ev){
+  const rect=renderer.domElement.getBoundingClientRect();
+  mouse.set((ev.clientX-rect.left)/rect.width*2-1,-(ev.clientY-rect.top)/rect.height*2+1);
+  raycaster.setFromCamera(mouse,camera);
+  const all=[...conceptMeshes,...docMeshes],hit=raycaster.intersectObjects(all);
+  if(hit.length>0){
+    const obj=hit[0].object; selectedNodeId=obj.userData.id; showDetail(obj.userData.id,obj.userData.type);
+    all.forEach(m=>m.scale.setScalar(m.userData.id===obj.userData.id?1.8:1.0));
+  }else{selectedNodeId=null;document.getElementById('dp').innerHTML='<p style=color:#667;font-size:13px>点击球体节点查看详情</p>';all.forEach(m=>m.scale.setScalar(1));}
+}
+
+function onMouseMove(ev){
+  const rect=renderer.domElement.getBoundingClientRect();
+  mouse.set((ev.clientX-rect.left)/rect.width*2-1,-(ev.clientY-rect.top)/rect.height*2+1);
+  raycaster.setFromCamera(mouse,camera);
+  const all=[...conceptMeshes,...docMeshes],hit=raycaster.intersectObjects(all);
+  document.body.style.cursor=hit.length>0?'pointer':'default';
+  all.forEach(m=>{if(hit.length>0&&hit[0].object===m){if(m.userData.id!==selectedNodeId)m.scale.setScalar(1.4);}else if(m.userData.id!==selectedNodeId)m.scale.setScalar(1);});
+}
+
+function showDetail(id,type){
+  const p=document.getElementById('dp');
+  if(type==='concept'){
+    const c=CONCEPTS.find(x=>x.id===id);if(!c)return;
+    const dc=DIFF_COLORS[c.difficulty]||'#888',docol=DOMAIN_COLORS[c.domain]||'#888';
+    const sh=(c.sources||[]).map(s=>'<li>'+s+'</li>').join('');
+    let epH='';if(c.evolution_path){const ep=EVOLUTION_PATHS.find(e=>e.id===c.evolution_path);if(ep)epH='<div style=margin:12px0><b style=color:'+ep.color+'>'+ep.name+'</b></div>';}
+    p.innerHTML='<h3 style="color:'+docol+'">'+c.name+'</h3><div style="font-size:12px;color:#8899bb;margin:8px0"><span style="color:'+docol+'">'+c.domain+'</span> | <span style="color:'+dc+'">'+c.difficulty_label+'</span></div><div style="margin:12px0"><b>证据</b><p style="font-size:12px;color:#c0c8dd">'+ (c.evidence||'')+'</p></div><div style="margin:12px0"><b>文献</b><ul style="font-size:12px;color:#c0c8dd;padding-left:16px">'+sh+'</ul></div>'+epH;
+  }else if(type==='doc'){
+    const d=DOCUMENTS.find(x=>x.id===id);if(!d)return;
+    const rel=(d.related||[]).map(rid=>{const c=CONCEPTS.find(cc=>cc.id===rid);return c?c.name:rid;}).join('、');
+    p.innerHTML='<h3 style="color:#aaa">'+d.name+'</h3><div style="font-size:12px;color:#8899bb">'+d.type+'</div><div style="margin:12px0"><b>关联概念</b><p style="font-size:12px;color:#c0c8dd">'+rel+'</p></div>';
+  }
+}
+
+let afd=null,afdi=null,afp=null;
+function os(q){searchQ=q.toLowerCase();applyF();}
+function fd(d,el){afd=d;el.parentElement.querySelectorAll('.fb').forEach(b=>b.classList.remove('a'));el.classList.add('a');applyF();}
+function fdi(d,el){afdi=d;el.parentElement.querySelectorAll('.fb').forEach(b=>b.classList.remove('a'));el.classList.add('a');applyF();}
+function fp(p,el){afp=p;el.parentElement.querySelectorAll('.fb').forEach(b=>b.classList.remove('a'));el.classList.add('a');applyF();}
+function applyF(){
+  conceptMeshes.forEach(mesh=>{
+    const c=CONCEPTS.find(x=>x.id===mesh.userData.id);if(!c)return;
+    let v=true;
+    if(afd&&c.domain!==afd)v=false;
+    if(afdi&&c.difficulty!==afdi)v=false;
+    if(afp&&c.evolution_path!==afp)v=false;
+    if(searchQ){const q=searchQ;if(!c.name.toLowerCase().includes(q)&&!c.domain.toLowerCase().includes(q)&&!(c.evidence||'').toLowerCase().includes(q)&&!(c.sources||[]).join(' ').toLowerCase().includes(q))v=false;}
+    mesh.visible=v;mesh.children.forEach(ch=>ch.visible=v);
+  });
+  pathLines.forEach(pl=>{pl.line.visible=!afp||pl.epId===afp;});
+}
+
+function tsb(){const sb=document.getElementById('sb'),tb=document.getElementById('tb');sb.classList.toggle('c');tb.classList.toggle('c');tb.textContent=sb.classList.contains('c')?'▶':'◀';}
+
+function animate(){requestAnimationFrame(animate);updateCamera();renderer.render(scene,camera);}
+
+// Start
+waitForTHREE(init);
+</script>
+</body>
+</html>

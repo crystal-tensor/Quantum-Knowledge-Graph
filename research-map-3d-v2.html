@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>量子计算研究地图 - 3D</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #050a14; color: #e2e8f0; font-family: -apple-system, 'Segoe UI', sans-serif; overflow: hidden; }
+#canvas-container { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
+#sidebar { position: fixed; top: 0; right: 0; width: 340px; height: 100%; background: rgba(10,15,30,0.92); backdrop-filter: blur(12px); border-left: 1px solid rgba(100,140,200,0.2); z-index: 10; display: flex; flex-direction: column; transition: transform 0.3s; }
+#sidebar.collapsed { transform: translateX(100%); }
+#sidebar-header { padding: 16px; border-bottom: 1px solid rgba(100,140,200,0.15); }
+#sidebar-header h2 { font-size: 16px; margin-bottom: 8px; }
+#search-box { width: 100%; padding: 8px 12px; background: rgba(30,40,70,0.8); border: 1px solid rgba(100,140,200,0.3); border-radius: 6px; color: #e2e8f0; font-size: 13px; }
+#filter-section { padding: 12px 16px; border-bottom: 1px solid rgba(100,140,200,0.1); max-height: 200px; overflow-y: auto; }
+.filter-group { margin-bottom: 8px; }
+.filter-group label { font-size: 11px; color: #8899bb; display: block; margin-bottom: 4px; }
+.filter-btn { display: inline-block; padding: 3px 8px; margin: 2px; font-size: 11px; border-radius: 4px; cursor: pointer; border: 1px solid rgba(100,140,200,0.3); background: rgba(30,40,70,0.5); color: #aabbdd; transition: all 0.2s; }
+.filter-btn.active { background: rgba(100,140,255,0.3); border-color: rgba(100,140,255,0.6); color: #fff; }
+#detail-panel { flex: 1; overflow-y: auto; padding: 16px; }
+#detail-panel h3 { font-size: 18px; margin-bottom: 8px; }
+.detail-meta { font-size: 12px; color: #8899bb; margin-bottom: 12px; }
+.detail-section { margin-bottom: 12px; }
+.detail-section h4 { font-size: 13px; color: #aabbdd; margin-bottom: 4px; }
+.detail-section p, .detail-section li { font-size: 12px; color: #c0c8dd; line-height: 1.5; }
+.detail-section ul { padding-left: 16px; }
+#hint { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: rgba(10,15,30,0.8); padding: 8px 16px; border-radius: 8px; font-size: 12px; color: #8899bb; z-index: 5; pointer-events: none; }
+#loading { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); z-index: 100; color: #aabbdd; font-size: 14px; }
+#toggle-sidebar { position: fixed; top: 50%; right: 340px; transform: translateY(-50%); width: 24px; height: 48px; background: rgba(10,15,30,0.8); border: 1px solid rgba(100,140,200,0.3); border-right: none; border-radius: 6px 0 0 6px; color: #aabbdd; cursor: pointer; z-index: 11; display: flex; align-items: center; justify-content: center; font-size: 14px; transition: right 0.3s; }
+#toggle-sidebar.shide { right: 0; }
+@media (max-width: 768px) {
+  #sidebar { width: 100%; }
+  #toggle-sidebar { right: 0; }
+}
+</style>
+</head>
+<body>
+<div id="loading">正在加载 3D 研究地图...</div>
+<div id="canvas-container"></div>
+<div id="hint">🖱️ 拖拽旋转 | 滚轮缩放 | 点击节点查看详情 | R=自动旋转 F=正面 T=俯视 0=重置</div>
+<button id="toggle-sidebar" onclick="toggleSidebar()">◀</button>
+<div id="sidebar">
+  <div id="sidebar-header">
+    <h2>🔬 量子计算研究地图</h2>
+    <input id="search-box" type="text" placeholder="搜索概念、论文、领域..." oninput="onSearch(this.value)">
+  </div>
+  <div id="filter-section">
+    <div class="filter-group">
+      <label>研究领域</label>
+      <span class="filter-btn active" onclick="filterDomain(null,this)">全部</span>
+      <span class="filter-btn" onclick="filterDomain('量子物理基础',this)" style="color:#F59E0B">物理</span>
+      <span class="filter-btn" onclick="filterDomain('量子计算基础',this)" style="color:#3B82F6">基础</span>
+      <span class="filter-btn" onclick="filterDomain('量子算法',this)" style="color:#EF4444">算法</span>
+      <span class="filter-btn" onclick="filterDomain('量子纠错',this)" style="color:#A855F7">纠错</span>
+      <span class="filter-btn" onclick="filterDomain('量子硬件',this)" style="color:#2563EB">硬件</span>
+      <span class="filter-btn" onclick="filterDomain('量子软件',this)" style="color:#10B981">软件</span>
+      <span class="filter-btn" onclick="filterDomain('量子应用',this)" style="color:#06B6D4">应用</span>
+      <span class="filter-btn" onclick="filterDomain('量子产业',this)" style="color:#F97316">产业</span>
+    </div>
+    <div class="filter-group">
+      <label>难度等级</label>
+      <span class="filter-btn active" onclick="filterDifficulty(null,this)">全部</span>
+      <span class="filter-btn" onclick="filterDifficulty(1,this)" style="color:#22C55E">入门</span>
+      <span class="filter-btn" onclick="filterDifficulty(2,this)" style="color:#F59E0B">中级</span>
+      <span class="filter-btn" onclick="filterDifficulty(3,this)" style="color:#EF4444">高级</span>
+      <span class="filter-btn" onclick="filterDifficulty(4,this)" style="color:#9333EA">研究级</span>
+    </div>
+    <div class="filter-group">
+      <label>演进路径</label>
+      <span class="filter-btn active" onclick="filterPath(null,this)">全部</span>
+      <span class="filter-btn" onclick="filterPath('ep_algo',this)" style="color:#FF6B6B">算法</span>
+      <span class="filter-btn" onclick="filterPath('ep_nisq',this)" style="color:#4ECDC4">NISQ</span>
+      <span class="filter-btn" onclick="filterPath('ep_qec',this)" style="color:#C084FC">纠错</span>
+      <span class="filter-btn" onclick="filterPath('ep_hardware',this)" style="color:#60A5FA">硬件</span>
+      <span class="filter-btn" onclick="filterPath('ep_qcrypto',this)" style="color:#FBBF24">密码</span>
+      <span class="filter-btn" onclick="filterPath('ep_software',this)" style="color:#34D399">软件</span>
+      <span class="filter-btn" onclick="filterPath('ep_entanglement',this)" style="color:#A78BFA">纠缠</span>
+    </div>
+  </div>
+  <div id="detail-panel">
+    <p style="color:#667;font-size:13px">👆 点击球体上的节点查看详细信息</p>
+    <p style="color:#556;font-size:11px;margin-top:8px">58 概念节点 | 7 演进路径 | 15 文献文档</p>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script>
+// ============ DATA (injected from Python) ============
+const CONCEPTS = [{"id": "c_qm", "name": "量子力学", "domain": "量子物理基础", "difficulty": 1, "difficulty_label": "入门", "evidence": "双缝实验、薛定谔方程、贝尔不等式实验验证（Aspect 1982, Hensen 2015 loophole-free）", "sources": ["Dirac (1930) The Principles of Quantum Mechanics", "Sakurai (1994) Modern Quantum Mechanics"], "evolution_path": null, "lat": 78.75, "lon": -180, "x": -0.35116257962903086, "y": 1.7654135047258148, "z": -4.3005012912302016e-17}, {"id": "c_hilbert", "name": "希尔伯特空间", "domain": "量子物理基础", "difficulty": 2, "difficulty_label": "中级", "evidence": "量子力学数学基础，von Neumann公理化体系", "sources": ["von Neumann (1932) Mathematische Grundlagen", "Reed & Simon (1972) Methods of Modern Mathematical Physics"], "evolution_path": null, "lat": 76.25, "lon": 42.49, "x": 0.3154832013888865, "y": 1.7484157256638706, "z": 0.28898581261491046}, {"id": "c_entanglement", "name": "量子纠缠", "domain": "量子物理基础", "difficulty": 1, "difficulty_label": "入门", "evidence": "EPR佯谬(1935)→Bell不等式(1964)→Aspect实验(1982)→2022诺贝尔物理学奖", "sources": ["Einstein,Podolsky,Rosen (1935) Can Quantum-Mechanical Description be Considered Complete?", "Bell (1964) On the Einstein Podolsky Rosen Paradox"], "evolution_path": "ep_entanglement", "lat": 73.75, "lon": -95.02, "x": -0.04407482003039947, "y": 1.7280897378946718, "z": -0.5017601698246016}, {"id": "c_measurement", "name": "量子测量", "domain": "量子物理基础", "difficulty": 2, "difficulty_label": "中级", "evidence": "POVM形式化理论、弱测量实验验证", "sources": ["Nielsen & Chuang (2000) Ch.2.2", "Wiseman & Milburn (2009) Quantum Measurement and Control"], "evolution_path": "ep_entanglement", "lat": 71.25, "lon": 127.48, "x": -0.3520636546762075, "y": 1.7044742330911902, "z": 0.45915005366898426}, {"id": "c_decoherence", "name": "退相干", "domain": "量子物理基础", "difficulty": 2, "difficulty_label": "中级", "evidence": "Zurek退相干理论(1981)；离子阱实验验证（Myatt et al. 2000）", "sources": ["Zurek (1981) Phys. Rev. D", "Myatt et al. (2000) Nature"], "evolution_path": null, "lat": 68.75, "lon": 12.5, "x": 0.636924257288567, "y": 1.6776141647090375, "z": 0.14120270834869392}, {"id": "c_qinfo", "name": "量子信息论", "domain": "量子物理基础", "difficulty": 2, "difficulty_label": "中级", "evidence": "Holevo定理(1973)、量子信道容量理论", "sources": ["Holevo (1973) Problems of Information Transmission", "Wilde (2013) Quantum Information Theory"], "evolution_path": null, "lat": 66.25, "lon": -82.5, "x": 0.09462418534168396, "y": 1.6475606624150048, "z": -0.7187420449723622}, {"id": "c_qubit", "name": "量子比特", "domain": "量子计算基础", "difficulty": 1, "difficulty_label": "入门", "evidence": "量子比特 vs 经典比特，Bloch球表示（Nielsen & Chuang 2000 Ch.1）", "sources": ["Nielsen & Chuang (2000) Ch.1", "Mermin (2007) Quantum Computer Science"], "evolution_path": null, "lat": 63.75, "lon": 95.0, "x": -0.06938639874886678, "y": 1.6143709347588389, "z": 0.7930901667998009}, {"id": "c_qgate", "name": "量子门", "domain": "量子计算基础", "difficulty": 1, "difficulty_label": "入门", "evidence": "Clifford+T 通用门集（Bravyi & Kitaev 2005）", "sources": ["Nielsen & Chuang (2000) Ch.4", "Bravyi & Kitaev (2005) Phys. Rev. A"], "evolution_path": null, "lat": 61.25, "lon": -175.0, "x": -0.8624852305905055, "y": 1.5781081602735139, "z": -0.07545768013521173}, {"id": "c_qcircuit", "name": "量子电路", "domain": "量子计算基础", "difficulty": 1, "difficulty_label": "入门", "evidence": "量子电路模型（Deutsch 1989）、QASM/OpenQASM标准", "sources": ["Deutsch (1989) PRL", "Cross et al. (2017) arXiv:1707.03429"], "evolution_path": null, "lat": 58.75, "lon": -85.0, "x": 0.08138532353868513, "y": 1.538841367211304, "z": -0.9302385047243253}, {"id": "c_superposition", "name": "量子叠加", "domain": "量子计算基础", "difficulty": 1, "difficulty_label": "入门", "evidence": "双缝实验、Scott Aaronson讲义", "sources": ["Feynman (1982) Simulating physics", "Aaronson (2013) Quantum Computing since Democritus"], "evolution_path": null, "lat": 56.25, "lon": 5.0, "x": 0.996221016993102, "y": 1.4966453021445814, "z": 0.08715804535316331}, {"id": "c_deutsch", "name": "Deutsch算法", "domain": "量子算法", "difficulty": 2, "difficulty_label": "中级", "evidence": "第一个证明量子优势的算法（Deutsch 1985 PRL）", "sources": ["Deutsch (1985) PRL", "Deutsch & Jozsa (1992) PRSL"], "evolution_path": "ep_algo", "lat": 53.75, "lon": -12.5, "x": 1.039127847603943, "y": 1.4516002876814686, "z": -0.23036909761744043}, {"id": "c_simon", "name": "Simon算法", "domain": "量子算法", "difficulty": 2, "difficulty_label": "中级", "evidence": "Shor算法的前身，指数加速（Simon 1994 FOCS）", "sources": ["Simon (1994) FOCS", "Oded Regev (2004) J. ACM"], "evolution_path": "ep_algo", "lat": 51.25, "lon": -102.5, "x": -0.24385434241376622, "y": 1.4037920695671873, "z": -1.0999558559806948}, {"id": "c_shor", "name": "Shor算法", "domain": "量子算法", "difficulty": 3, "difficulty_label": "高级", "evidence": "大数因式分解指数加速，威胁RSA（Shor 1994 FOCS）", "sources": ["Shor (1994) FOCS", "Shor (1997) SIAM J. Computing"], "evolution_path": "ep_algo", "lat": 48.75, "lon": -167.5, "x": -1.158690035868183, "y": 1.3533116534621594, "z": -0.2568753966095326}, {"id": "c_grover", "name": "Grover搜索", "domain": "量子算法", "difficulty": 2, "difficulty_label": "中级", "evidence": "无序数据库平方根加速（Grover 1996 STOC）", "sources": ["Grover (1996) STOC", "Bennett et al. (1997) PRL"], "evolution_path": "ep_algo", "lat": 46.25, "lon": 97.5, "x": -0.16246901887508117, "y": 1.3002551317075601, "z": 1.2340747183108178}, {"id": "c_vqe", "name": "VQE", "domain": "量子算法", "difficulty": 3, "difficulty_label": "高级", "evidence": "变分量子本征求解器，量子化学应用（Peruzzo et al. 2014 Nat. Comm.）", "sources": ["Peruzzo et al. (2014) Nat. Commun.", "McClean et al. (2016) PRA"], "evolution_path": "ep_nisq", "lat": 43.75, "lon": 30.0, "x": 1.126053975459828, "y": 1.244723500408085, "z": 0.6501275658537798}, {"id": "c_qaao", "name": "QAOA", "domain": "量子算法", "difficulty": 3, "difficulty_label": "高级", "evidence": "量子近似优化算法（Farhi et al. 2014 arXiv:1411.4028）", "sources": ["Farhi, Goldstone, Gutmann (2014) arXiv:1411.4028", "Zhou et al. (2018) arXiv:1811.08419"], "evolution_path": "ep_nisq", "lat": 41.25, "lon": -37.5, "x": 1.0736543207292586, "y": 1.186822467180124, "z": -0.8238439360557788}, {"id": "c_qml", "name": "量子机器学习", "domain": "量子算法", "difficulty": 3, "difficulty_label": "高级", "evidence": "量子核方法、量子神经网络（Schuld et al. 2014 PRA）", "sources": ["Schuld et al. (2014) PRA", "Biamonte et al. (2017) Nature"], "evolution_path": "ep_nisq", "lat": 38.75, "lon": -105.0, "x": -0.36332812296787087, "y": 1.1266622499313064, "z": -1.3559590147347265}, {"id": "c_hhl", "name": "HHL算法", "domain": "量子算法", "difficulty": 4, "difficulty_label": "研究级", "evidence": "量子线性方程求解，指数加速（Harrow, Hassidim, Lloyd 2009 PRL）", "sources": ["Harrow, Hassidim, Lloyd (2009) PRL", "Childs et al. (2017) PRA"], "evolution_path": "ep_algo", "lat": 36.25, "lon": 157.5, "x": -1.3411037951764047, "y": 1.0643573670544482, "z": 0.5555033805120964}, {"id": "c_qsvt", "name": "QSVT", "domain": "量子算法", "difficulty": 4, "difficulty_label": "研究级", "evidence": "量子信号处理→统一量子算法框架（Gilyén et al. 2019 STOC）", "sources": ["Gilyén et al. (2019) STOC", "Martyn et al. (2021) PRX Quantum"], "evolution_path": "ep_algo", "lat": 33.75, "lon": 90.0, "x": 9.164309393651425e-17, "y": 1.0000264194352841, "z": 1.4966453021445814}, {"id": "c_qec", "name": "量子纠错", "domain": "量子纠错", "difficulty": 2, "difficulty_label": "中级", "evidence": "Shor码(1995)、Steane码(1996)、CSS码（Calderbank & Shor 1996）", "sources": ["Shor (1995) PRA", "Steane (1996) PRL"], "evolution_path": "ep_qec", "lat": 30.0, "lon": 22.5, "x": 1.4401856613442778, "y": 0.9000000000000002, "z": 0.5965444332640653}, {"id": "c_qec_threshold", "name": "阈值定理", "domain": "量子纠错", "difficulty": 3, "difficulty_label": "高级", "evidence": "容错阈值~1%（Aharonov & Ben-Or 1997 SICOMP）", "sources": ["Aharonov & Ben-Or (1997) SICOMP", "Knill, Laflamme, Zurek (1998) Science"], "evolution_path": "ep_qec", "lat": 26.25, "lon": -45.0, "x": 1.1415326353184407, "y": 0.7961196423942023, "z": -1.1415326353184405}, {"id": "c_surface_code", "name": "表面码", "domain": "量子纠错", "difficulty": 3, "difficulty_label": "高级", "evidence": "容错阈值~1%，Google实现逻辑量子比特（Kitaev 2003, Google 2023 Nature）", "sources": ["Kitaev (2003) arXiv:quant-ph/9707021", "Google (2023) Nature 614, 676"], "evolution_path": "ep_qec", "lat": 22.5, "lon": -112.5, "x": -0.6363961030678926, "y": 0.6888301782571618, "z": -1.5363961030678928}, {"id": "c_decoder", "name": "译码器", "domain": "量子纠错", "difficulty": 3, "difficulty_label": "高级", "evidence": "MWPM（Dennis et al. 2002）、UF（Delfosse & Nickerson 2017）", "sources": ["Dennis et al. (2002) J. Math. Phys.", "Delfosse & Nickerson (2017) arXiv:1709.06218"], "evolution_path": "ep_qec", "lat": 18.75, "lon": -180.0, "x": -1.7044742330911902, "y": 0.5785910375456911, "z": -2.0873789137842656e-16}, {"id": "c_ftqc", "name": "容错量子计算", "domain": "量子纠错", "difficulty": 3, "difficulty_label": "高级", "evidence": "容错门、魔术态制备（Gottesman 1998 arXiv:quant-ph/9705052）", "sources": ["Gottesman (1998) arXiv:quant-ph/9705052", "Campbell, Terhal, Vuillot (2017) Nature"], "evolution_path": "ep_qec", "lat": 15.0, "lon": -247.5, "x": -0.6653588591058945, "y": 0.46587428118453733, "z": 1.6063183814985413}, {"id": "c_logical_qubit", "name": "逻辑量子比特", "domain": "量子纠错", "difficulty": 4, "difficulty_label": "研究级", "evidence": "Google 2023 Nature实现逻辑量子比特，break-even（Google AI 2023）", "sources": ["Google (2023) Nature 614, 676", "AWS (2024) Science 384, 1327"], "evolution_path": "ep_qec", "lat": 11.25, "lon": -315.0, "x": 1.2483358607899324, "y": 0.351162579629031, "z": 1.248335860789933}, {"id": "c_ldpc", "name": "LDPC码", "domain": "量子纠错", "difficulty": 4, "difficulty_label": "研究级", "evidence": "常数开销量子纠错（Panteleev & Kalachev 2021）", "sources": ["Panteleev & Kalachev (2021) arXiv:2103.01157", "Leverrier (2022) arXiv:2203.04948"], "evolution_path": "ep_qec", "lat": 7.5, "lon": -382.5, "x": 1.648756107066156, "y": 0.2349471459960931, "z": -0.682937140592269}, {"id": "c_superconducting", "name": "超导量子", "domain": "量子硬件", "difficulty": 2, "difficulty_label": "中级", "evidence": "Transmon qubit（Koch et al. 2007 PRA）、IBM/Google路线图", "sources": ["Koch et al. (2007) PRA", "IBM (2023) Nature 618, 264"], "evolution_path": "ep_hardware", "lat": -3.75, "lon": -450.0, "x": 5.499111313551511e-16, "y": -0.11772563261425727, "z": -1.7961460618294862}, {"id": "c_ion_trap", "name": "离子阱", "domain": "量子硬件", "difficulty": 2, "difficulty_label": "中级", "evidence": "最高保真度门（Häffner et al. 2008 Nature Reviews）", "sources": ["Häffner, Roos, Blatt (2008) Nature Rev. Phys.", "Monroe & Kim (2013) Science"], "evolution_path": "ep_hardware", "lat": -7.5, "lon": -517.5, "x": -1.6487561070661556, "y": -0.2349471459960929, "z": -0.68293714059227}, {"id": "c_photonic", "name": "光量子", "domain": "量子硬件", "difficulty": 3, "difficulty_label": "高级", "evidence": "九章光量子优势（Zhong et al. 2020 Science）、Xanadu Borealis", "sources": ["Zhong et al. (2020) Science", "Madsen et al. (2022) Nature"], "evolution_path": "ep_hardware", "lat": -11.25, "lon": -585.0, "x": -1.2483358607899322, "y": -0.35116257962903075, "z": 1.2483358607899333}, {"id": "c_neutral_atom", "name": "中性原子", "domain": "量子硬件", "difficulty": 3, "difficulty_label": "高级", "evidence": "可扩展中性原子阵列（Browaeys & Henriet 2020 Nat. Phys.）", "sources": ["Browaeys & Henriet (2020) Nat. Phys.", "Ebadi et al. (2021) Nature"], "evolution_path": "ep_hardware", "lat": -15.0, "lon": -652.5, "x": 0.6653588591058951, "y": -0.46587428118453755, "z": 1.6063183814985411}, {"id": "c_di_vincenzo", "name": "DiVincenzo判据", "domain": "量子硬件", "difficulty": 2, "difficulty_label": "中级", "evidence": "量子计算机物理实现的7条判据（DiVincenzo 2000 Fortschritte）", "sources": ["DiVincenzo (2000) Fortschr. Phys.", "Loss & DiVincenzo (1998) PRA"], "evolution_path": "ep_hardware", "lat": -18.75, "lon": -720.0, "x": 1.7044742330911902, "y": -0.5785910375456909, "z": 8.349515655137062e-16}, {"id": "c_q_control", "name": "量子测控", "domain": "量子硬件", "difficulty": 3, "difficulty_label": "高级", "evidence": "低温CMOS控制（Vandersypen et al. 2017 Nature）", "sources": ["Vandersypen & Chuang (2004) Rev. Mod. Phys.", "Krinner et al. (2022) Nature"], "evolution_path": null, "lat": -22.5, "lon": -787.5, "x": 0.6363961030678943, "y": -0.6888301782571615, "z": -1.536396103067892}, {"id": "c_q_engineering", "name": "量子工程化", "domain": "量子硬件", "difficulty": 3, "difficulty_label": "高级", "evidence": "量子计算工程化路线图（Awschalom et al. 2019 Science）", "sources": ["Awschalom et al. (2019) Science", "NSF QIS (2021) arXiv:2109.00039"], "evolution_path": "ep_hardware", "lat": -26.25, "lon": -855.0, "x": -1.141532635318441, "y": -0.7961196423942021, "z": -1.14153263531844}, {"id": "c_topological", "name": "拓扑量子", "domain": "量子硬件", "difficulty": 4, "difficulty_label": "研究级", "evidence": "Majorana零模、拓扑量子计算（Kitaev 2001）", "sources": ["Kitaev (2001) arXiv:cond-mat/0010440", "Nayak et al. (2008) Rev. Mod. Phys."], "evolution_path": "ep_hardware", "lat": -30.0, "lon": -922.5, "x": -1.4401856613442794, "y": -0.8999999999999997, "z": 0.5965444332640625}, {"id": "c_qcompile", "name": "量子编译", "domain": "量子软件", "difficulty": 3, "difficulty_label": "高级", "evidence": "量子电路优化、映射、调度（Nash et al. 2020 arXiv:2003.00671）", "sources": ["Nash et al. (2020) arXiv:2003.00671", "Li & Benjamin (2017) PRA"], "evolution_path": "ep_software", "lat": -33.75, "lon": -990.0, "x": 1.6505020853191247e-15, "y": -1.0000264194352844, "z": 1.4966453021445814}, {"id": "c_qcalib", "name": "量子校准", "domain": "量子软件", "difficulty": 3, "difficulty_label": "高级", "evidence": "自动校准、门集断层（Flammia & Wallman 2020 PRA）", "sources": ["Flammia & Wallman (2020) PRA", "Merkel et al. (2013) PRA"], "evolution_path": "ep_software", "lat": -37.5, "lon": -1057.5, "x": 1.3193332436601617, "y": -1.0957705722156972, "z": 0.5464857228137253}, {"id": "c_qos", "name": "量子操作系统", "domain": "量子软件", "difficulty": 3, "difficulty_label": "高级", "evidence": "量子云计算操作系统（Microsoft Azure Quantum 2021）", "sources": ["Microsoft (2021) Azure Quantum", "Amazon Braket (2022)"], "evolution_path": "ep_software", "lat": -41.25, "lon": -1125.0, "x": 0.9569358472218719, "y": -1.186822467180124, "z": -0.9569358472218722}, {"id": "c_qco_design", "name": "软硬协同设计", "domain": "量子软件", "difficulty": 4, "difficulty_label": "研究级", "evidence": "量子系统架构协同优化（Leung et al. 2022 PRApplied）", "sources": ["Leung et al. (2022) PRApplied", "Intel (2023) IEEE Micro"], "evolution_path": "ep_software", "lat": -45.0, "lon": -1192.5, "x": -0.48707649013157694, "y": -1.2727922061357855, "z": -1.1759066683887391}, {"id": "c_qchem", "name": "量子化学", "domain": "量子应用", "difficulty": 3, "difficulty_label": "高级", "evidence": "量子相估计用于分子基态（Aspuru-Guzik et al. 2005 Science）", "sources": ["Aspuru-Guzik et al. (2005) Science", "Cao et al. (2019) Chem. Rev."], "evolution_path": "ep_nisq", "lat": -48.75, "lon": -1260.0, "x": -1.1868224671801242, "y": -1.3533116534621592, "z": -1.0174068349118125e-15}, {"id": "c_qfinance", "name": "量子金融", "domain": "量子应用", "difficulty": 3, "difficulty_label": "高级", "evidence": "量子蒙特卡洛在金融中的应用（Orus et al. 2019 Rev. Phys.）", "sources": ["Orus et al. (2019) Rev. Phys.", "Egger et al. (2020) IEEE TEVC"], "evolution_path": "ep_nisq", "lat": -52.5, "lon": -1327.5, "x": -0.419333243660163, "y": -1.428036012524223, "z": 1.0123600039982634}, {"id": "c_qai", "name": "量子AI", "domain": "量子应用", "difficulty": 4, "difficulty_label": "研究级", "evidence": "量子深度学习（Cong, Choi, Lukin 2019 Nat. Phys.）", "sources": ["Cong, Choi, Lukin (2019) Nat. Phys.", "Gao et al. (2018) PRL"], "evolution_path": "ep_nisq", "lat": -56.25, "lon": -1395.0, "x": 0.7071254625483906, "y": -1.4966453021445816, "z": 0.7071254625483931}, {"id": "c_qsensing", "name": "量子传感", "domain": "量子应用", "difficulty": 2, "difficulty_label": "中级", "evidence": "量子增强传感（Degen, Reinhard, Cappellaro 2017 Rev. Mod. Phys.）", "sources": ["Degen, Reinhard, Cappellaro (2017) Rev. Mod. Phys.", "Giovannetti, Lloyd, Maccone (2004) Science"], "evolution_path": null, "lat": -60.0, "lon": -1462.5, "x": 0.8314915792601576, "y": -1.5588457268119897, "z": -0.34441508912858176}, {"id": "c_qcrypto", "name": "量子密码", "domain": "量子应用", "difficulty": 2, "difficulty_label": "中级", "evidence": "BB84协议（Bennett & Brassard 1984）、NIST PQC标准（2024）", "sources": ["Bennett & Brassard (1984)", "NIST (2024) FIPS 203/204/205"], "evolution_path": "ep_qcrypto", "lat": -63.75, "lon": -1530.0, "x": -5.854720057208869e-16, "y": -1.6143709347588389, "z": -0.7961196423942024}, {"id": "c_teleportation", "name": "量子隐形传态", "domain": "量子应用", "difficulty": 2, "difficulty_label": "中级", "evidence": "量子隐形传态协议（Bennett et al. 1993 PRL）", "sources": ["Bennett et al. (1993) PRL", "Pan et al. (2012) Nature"], "evolution_path": "ep_qcrypto", "lat": -67.5, "lon": -1597.5, "x": -0.6363961030678931, "y": -1.662983158520316, "z": -0.2636038969321072}, {"id": "c_pqc", "name": "后量子密码", "domain": "量子应用", "difficulty": 3, "difficulty_label": "高级", "evidence": "NIST后量子密码标准化（Chen et al. 2016 NISTIR 8105）", "sources": ["Chen et al. (2016) NISTIR 8105", "Bernstein et al. (2009) PQCrypto"], "evolution_path": "ep_qcrypto", "lat": -71.25, "lon": -1665.0, "x": -0.40912564618231867, "y": -1.7044742330911902, "z": 0.40912564618231845}, {"id": "c_q_ecosystem", "name": "量子产业生态", "domain": "量子产业", "difficulty": 1, "difficulty_label": "入门", "evidence": "量子计算公司生态（IBM, Google, Rigetti, IonQ, PsiQuantum等）", "sources": ["McKinsey (2023) Quantum technology monitor", "BCG (2022) quantum computing commercialization"], "evolution_path": null, "lat": -75.0, "lon": -1732.5, "x": 0.1782823689743176, "y": -1.7386664873203228, "z": 0.4304117131098027}, {"id": "c_market", "name": "量子市场", "domain": "量子产业", "difficulty": 1, "difficulty_label": "入门", "evidence": "量子计算市场规模预测（IDC 2025报告）", "sources": ["IDC (2025) Quantum Computing Market", "Goldman Sachs (2021) Quantum Computing"], "evolution_path": null, "lat": -78.75, "lon": -1800.0, "x": 0.3511625796290307, "y": -1.7654135047258148, "z": 4.3005012912302e-16}];
+const EVOLUTION_PATHS = [{"id": "ep_algo", "name": "量子算法演进", "description": "从早期量子算法探索到通用量子算法统一框架", "color": "#FF6B6B", "lineColor": "#FF6B6B", "steps": [["c_deutsch", 1992, "Deutsch–Jozsa\n首次指数加速"], ["c_simon", 1994, "Simon算法\nShor的前身"], ["c_shor", 1994, "Shor算法\n因式分解突破"], ["c_grover", 1996, "Grover搜索\n平方加速"], ["c_hhl", 2009, "HHL算法\n线性方程求解"], ["c_qsvt", 2019, "QSVT\n统一框架"]]}, {"id": "ep_nisq", "name": "NISQ应用演进", "description": "变分量子算法与近期量子设备应用", "color": "#4ECDC4", "lineColor": "#4ECDC4", "steps": [["c_vqe", 2014, "VQE\n化学模拟开端"], ["c_qaao", 2014, "QAOA\n组合优化"], ["c_qml", 2017, "QML\n机器学习融合"], ["c_qchem", 2019, "量子化学\n实际应用"], ["c_qfinance", 2020, "量子金融\n蒙特卡洛"], ["c_qai", 2021, "量子AI\n深度学习"]]}, {"id": "ep_qec", "name": "量子纠错演进", "description": "从第一代纠错码到实用容错量子计算", "color": "#C084FC", "lineColor": "#C084FC", "steps": [["c_qec", 1995, "Shor码\n9-qubit"], ["c_qec_threshold", 1997, "阈值定理\n理论保障"], ["c_surface_code", 2003, "表面码\nKitaev"], ["c_decoder", 2012, "译码器\nMWPM/UF"], ["c_ftqc", 2017, "容错方案\n路线图"], ["c_logical_qubit", 2023, "逻辑量子比特\nbreak-even"], ["c_ldpc", 2024, "LDPC码\n常数开销"]]}, {"id": "ep_hardware", "name": "量子硬件演进", "description": "量子计算物理实现平台的代际演进", "color": "#60A5FA", "lineColor": "#60A5FA", "steps": [["c_di_vincenzo", 2000, "DiVincenzo\n五条判据"], ["c_superconducting", 2007, "Transmon\n超导方案"], ["c_ion_trap", 2014, "离子阱\n最高保真度"], ["c_photonic", 2020, "光量子\n九章优势"], ["c_neutral_atom", 2023, "中性原子\n可扩展阵列"], ["c_q_engineering", 2024, "工程化\ncryo-CMOS"], ["c_topological", 2025, "拓扑量子\nMajorana"]]}, {"id": "ep_qcrypto", "name": "量子密码与通信演进", "description": "从BB84到后量子密码标准化的密码学革命", "color": "#FBBF24", "lineColor": "#FBBF24", "steps": [["c_qcrypto", 1984, "BB84协议\n量子密码开端"], ["c_teleportation", 1993, "隐形传态\n理论提出"], ["c_teleportation", 2017, "墨子号\n星地QKD"], ["c_q_ecosystem", 2018, "国家战略\n政策布局"], ["c_pqc", 2024, "PQC标准\nNIST发布"]]}, {"id": "ep_software", "name": "量子软件栈演进", "description": "从裸脉冲到全栈量子操作系统的软件体系", "color": "#34D399", "lineColor": "#34D399", "steps": [["c_qcompile", 2017, "量子编译\n电路优化"], ["c_qcalib", 2019, "量子校准\n自动调优"], ["c_qos", 2021, "量子OS\n云原生"], ["c_qco_design", 2022, "软硬协同\n架构设计"]]}, {"id": "ep_entanglement", "name": "纠缠与测量演进", "description": "从EPR佯谬到量子信息基础的革命", "color": "#A78BFA", "lineColor": "#A78BFA", "steps": [["c_entanglement", 1935, "EPR佯谬\n量子纠缠提出"], ["c_measurement", 1964, "Bell不等式\n可证伪预测"], ["c_measurement", 1982, "Aspect实验\n验证Bell"], ["c_decoherence", 2022, "诺贝尔物理学奖\n纠缠验证"]]}];
+const DOCUMENTS = [{"id": "d_01", "name": "Nielsen & Chuang 量子计算与量子信息", "type": "教材", "related": ["c_qubit", "c_qgate", "c_qec", "c_shor", "c_grover"]}, {"id": "d_02", "name": "量子纠错白皮书 (white_paper_for_qec)", "type": "报告", "related": ["c_surface_code", "c_qec", "c_qec_threshold", "c_logical_qubit"]}, {"id": "d_03", "name": "量子信息导论 (Preskill讲义)", "type": "讲义", "related": ["c_qinfo", "c_qec", "c_ftqc", "c_entanglement"]}, {"id": "d_04", "name": "量子算法综述", "type": "综述", "related": ["c_shor", "c_grover", "c_hhl", "c_vqe", "c_qsvt"]}, {"id": "d_05", "name": "超导量子计算进展", "type": "综述", "related": ["c_superconducting", "c_qgate", "c_q_control"]}, {"id": "d_06", "name": "量子机器学习教程", "type": "教程", "related": ["c_qml", "c_qai", "c_vqe"]}, {"id": "d_07", "name": "量子化学模拟入门", "type": "教程", "related": ["c_qchem", "c_vqe"]}, {"id": "d_08", "name": "第二届量子会议论文集", "type": "会议", "related": ["c_q_ecosystem", "c_market", "c_superconducting", "c_ion_trap"]}, {"id": "d_09", "name": "量子金融应用白皮书", "type": "报告", "related": ["c_qfinance", "c_hhl"]}, {"id": "d_10", "name": "表面码实现详解", "type": "教程", "related": ["c_surface_code", "c_decoder", "c_logical_qubit"]}, {"id": "d_11", "name": "拓扑量子计算导论", "type": "教程", "related": ["c_topological", "c_surface_code"]}, {"id": "d_12", "name": "量子密码学基础", "type": "教程", "related": ["c_qcrypto", "c_pqc", "c_teleportation"]}, {"id": "d_13", "name": "离子阱量子计算综述", "type": "综述", "related": ["c_ion_trap", "c_qgate", "c_q_control"]}, {"id": "d_14", "name": "NISQ算法与应用", "type": "综述", "related": ["c_vqe", "c_qaao", "c_qml", "c_qchem"]}, {"id": "d_15", "name": "后量子密码标准化进展", "type": "报告", "related": ["c_pqc", "c_qcrypto"]}];
+const DOMAIN_COLORS = {"量子物理基础": "#F59E0B", "量子计算基础": "#3B82F6", "量子算法": "#EF4444", "量子纠错": "#A855F7", "量子硬件": "#2563EB", "量子软件": "#10B981", "量子应用": "#06B6D4", "量子产业": "#F97316"};
+const DIFF_COLORS = {"1": "#22C55E", "2": "#F59E0B", "3": "#EF4444", "4": "#9333EA"};
+
+// ============ GLOBALS ============
+let scene, camera, renderer, controls, globeGroup;
+let conceptMeshes = [], pathLines = [], docMeshes = [];
+let raycaster = new THREE.Raycaster();
+let mouse = new THREE.Vector2();
+let selectedNodeId = null;
+let autoRotate = true;
+let hoveredNodeId = null;
+
+// ============ INIT ============
+function init() {
+  const container = document.getElementById('canvas-container');
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x050a14);
+  scene.fog = new THREE.FogExp2(0x050a14, 0.00008);
+
+  camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.5, 50);
+  camera.position.set(3, 1.8, 5.5);
+
+  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  container.appendChild(renderer.domElement);
+
+  // Lights
+  scene.add(new THREE.AmbientLight(0x334466, 0.6));
+  const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
+  dirLight.position.set(5, 5, 5);
+  scene.add(dirLight);
+  const pointLight = new THREE.PointLight(0x4488cc, 0.5, 20);
+  pointLight.position.set(-3, 2, -2);
+  scene.add(pointLight);
+
+  // Stars
+  const starsGeo = new THREE.BufferGeometry();
+  const starsPositions = new Float32Array(2000 * 3);
+  for (let i = 0; i < 2000; i++) {
+    const r = 15 + Math.random() * 15;
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.acos(2 * Math.random() - 1);
+    starsPositions[i*3] = r * Math.sin(phi) * Math.cos(theta);
+    starsPositions[i*3+1] = r * Math.sin(phi) * Math.sin(theta);
+    starsPositions[i*3+2] = r * Math.cos(phi);
+  }
+  starsGeo.setAttribute('position', new THREE.Float32BufferAttribute(starsPositions, 3));
+  const starsMat = new THREE.PointsMaterial({ color: 0x6088c0, size: 0.03, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0.8 });
+  scene.add(new THREE.Points(starsGeo, starsMat));
+
+  // Globe
+  globeGroup = new THREE.Group();
+  scene.add(globeGroup);
+  const globeGeo = new THREE.SphereGeometry(1.78, 64, 48);
+  const globeMat = new THREE.MeshPhongMaterial({ color: 0x0a1a3a, emissive: 0x020810, specular: 0x1a3050, shininess: 30, transparent: true, opacity: 0.75 });
+  globeGroup.add(new THREE.Mesh(globeGeo, globeMat));
+  // Wireframe
+  const wireGeo = new THREE.SphereGeometry(1.8, 48, 24);
+  const wireMat = new THREE.MeshBasicMaterial({ color: 0x1a3a5c, wireframe: true, transparent: true, opacity: 0.12 });
+  globeGroup.add(new THREE.Mesh(wireGeo, wireMat));
+  // Lat/lon lines
+  for (let lat = -60; lat <= 60; lat += 30) globeGroup.add(createLatLine(lat));
+  for (let lon = -150; lon <= 180; lon += 30) globeGroup.add(createLonLine(lon));
+  // Atmosphere ring
+  const ringGeo = new THREE.TorusGeometry(1.85, 0.015, 16, 100);
+  const ringMat = new THREE.MeshBasicMaterial({ color: 0x3060a0, transparent: true, opacity: 0.2 });
+  const ring = new THREE.Mesh(ringGeo, ringMat);
+  ring.rotation.x = Math.PI / 2;
+  globeGroup.add(ring);
+
+  // Create concept nodes
+  CONCEPTS.forEach(c => {
+    const color = new THREE.Color(DOMAIN_COLORS[c.domain] || '#888');
+    const geometry = new THREE.SphereGeometry(0.06, 16, 12);
+    const material = new THREE.MeshPhongMaterial({ color: color, emissive: color, emissiveIntensity: 0.4, shininess: 80 });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.set(c.x, c.y, c.z);
+    mesh.userData = { id: c.id, type: 'concept' };
+    globeGroup.add(mesh);
+    conceptMeshes.push(mesh);
+
+    // Glow sprite
+    const spriteMat = new THREE.SpriteMaterial({ color: color, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0.3 });
+    const sprite = new THREE.Sprite(spriteMat);
+    sprite.scale.set(0.2, 0.2, 1);
+    mesh.add(sprite);
+
+    // Label (canvas texture)
+    const labelCanvas = document.createElement('canvas');
+    labelCanvas.width = 256; labelCanvas.height = 64;
+    const ctx = labelCanvas.getContext('2d');
+    ctx.fillStyle = '#' + color.getHexString();
+    ctx.font = 'bold 28px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(c.name, 128, 40);
+    const labelTex = new THREE.CanvasTexture(labelCanvas);
+    const labelMat = new THREE.SpriteMaterial({ map: labelTex, depthWrite: false, depthTest: false, transparent: true, opacity: 0.85 });
+    const labelSprite = new THREE.Sprite(labelMat);
+    labelSprite.scale.set(0.5, 0.125, 1);
+    labelSprite.position.set(0, 0.12, 0);
+    mesh.add(labelSprite);
+  });
+
+  // Create evolution path curves
+  EVOLUTION_PATHS.forEach(ep => {
+    const points = [];
+    ep.steps.forEach(([cid, year, label]) => {
+      const concept = CONCEPTS.find(c => c.id === cid);
+      if (concept) {
+        points.push(new THREE.Vector3(concept.x, concept.y, concept.z));
+      }
+    });
+    if (points.length >= 2) {
+      const curve = new THREE.CatmullRomCurve3(points, false, 'centripetal', 0.5);
+      const curvePoints = curve.getPoints(points.length * 8);
+      const lineGeo = new THREE.BufferGeometry().setFromPoints(curvePoints);
+      const lineMat = new THREE.LineBasicMaterial({ color: new THREE.Color(ep.color), transparent: true, opacity: 0.5, linewidth: 1 });
+      const line = new THREE.Line(lineGeo, lineMat);
+      globeGroup.add(line);
+      pathLines.push({ line, epId: ep.id });
+
+      // Year labels at each step
+      ep.steps.forEach(([cid, year, label], idx) => {
+        if (idx === 0) return;
+        const prevCid = ep.steps[idx-1][0];
+        const prevC = CONCEPTS.find(c => c.id === prevCid);
+        const currC = CONCEPTS.find(c => c.id === cid);
+        if (!prevC || !currC) return;
+        const mid = new THREE.Vector3().addVectors(
+          new THREE.Vector3(prevC.x, prevC.y, prevC.z),
+          new THREE.Vector3(currC.x, currC.y, currC.z)
+        ).multiplyScalar(0.5).normalize().multiplyScalar(1.82);
+        const yearCanvas = document.createElement('canvas');
+        yearCanvas.width = 128; yearCanvas.height = 48;
+        const yctx = yearCanvas.getContext('2d');
+        yctx.fillStyle = ep.color;
+        yctx.font = '20px sans-serif';
+        yctx.textAlign = 'center';
+        yctx.fillText(String(year), 64, 30);
+        const yTex = new THREE.CanvasTexture(yearCanvas);
+        const yMat = new THREE.SpriteMaterial({ map: yTex, depthWrite: false, depthTest: false, transparent: true, opacity: 0.7 });
+        const ySprite = new THREE.Sprite(yMat);
+        ySprite.scale.set(0.25, 0.094, 1);
+        ySprite.position.copy(mid);
+        globeGroup.add(ySprite);
+      });
+    }
+  });
+
+  // Create document nodes (ring around globe)
+  DOCUMENTS.forEach((d, i) => {
+    const angle = (i / DOCUMENTS.length) * Math.PI * 2;
+    const x = 2.8 * Math.cos(angle);
+    const z = 2.8 * Math.sin(angle);
+    const y = 0.3 * Math.sin(angle * 2);
+    const geometry = new THREE.BoxGeometry(0.08, 0.1, 0.04);
+    const material = new THREE.MeshPhongMaterial({ color: 0xaaaa66, emissive: 0x444422, emissiveIntensity: 0.3 });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.set(x, y, z);
+    mesh.userData = { id: d.id, type: 'document' };
+    scene.add(mesh);
+    docMeshes.push(mesh);
+  });
+
+  // Controls (simple OrbitControls replacement)
+  setupControls(container);
+
+  window.addEventListener('resize', onResize);
+  container.addEventListener('click', onClick);
+  container.addEventListener('mousemove', onMouseMove);
+  document.addEventListener('keydown', onKeyDown);
+
+  document.getElementById('loading').style.display = 'none';
+  animate();
+}
+
+function createLatLine(latDeg) {
+  const phi = Math.PI / 2 - (latDeg * Math.PI / 180);
+  const r = 1.8 * Math.cos(phi);
+  const y = 1.8 * Math.sin(phi);
+  const pts = [];
+  for (let i = 0; i <= 128; i++) {
+    const theta = (i / 128) * Math.PI * 2;
+    pts.push(new THREE.Vector3(r * Math.cos(theta), y, r * Math.sin(theta)));
+  }
+  const g = new THREE.BufferGeometry().setFromPoints(pts);
+  const m = new THREE.LineBasicMaterial({ color: 0x1a3050, transparent: true, opacity: 0.25 });
+  return new THREE.Line(g, m);
+}
+
+function createLonLine(lonDeg) {
+  const theta = lonDeg * Math.PI / 180;
+  const pts = [];
+  for (let i = 0; i <= 128; i++) {
+    const phi = (i / 128) * Math.PI;
+    pts.push(new THREE.Vector3(1.8*Math.sin(phi)*Math.cos(theta), 1.8*Math.cos(phi), 1.8*Math.sin(phi)*Math.sin(theta)));
+  }
+  const g = new THREE.BufferGeometry().setFromPoints(pts);
+  const m = new THREE.LineBasicMaterial({ color: 0x1a3050, transparent: true, opacity: 0.25 });
+  return new THREE.Line(g, m);
+}
+
+// ============ SIMPLE ORBIT CONTROLS ============
+let isDragging = false, prevMouse = {x:0,y:0};
+let rotX = 0, rotY = 0, zoomLevel = 5.5;
+function setupControls(container) {
+  container.addEventListener('mousedown', e => { isDragging = true; prevMouse = {x:e.clientX,y:e.clientY}; });
+  container.addEventListener('mousemove', e => {
+    if (!isDragging) return;
+    const dx = e.clientX - prevMouse.x, dy = e.clientY - prevMouse.y;
+    rotY += dx * 0.005; rotX += dy * 0.005;
+    prevMouse = {x:e.clientX,y:e.clientY};
+  });
+  container.addEventListener('mouseup', () => isDragging = false);
+  container.addEventListener('mouseleave', () => isDragging = false);
+  container.addEventListener('wheel', e => {
+    zoomLevel = Math.max(2, Math.min(15, zoomLevel + e.deltaY * 0.005));
+    e.preventDefault();
+  }, {passive: false});
+}
+
+function updateCamera() {
+  const r = zoomLevel;
+  camera.position.x = r * Math.cos(rotX) * Math.sin(rotY);
+  camera.position.y = r * Math.sin(rotX);
+  camera.position.z = r * Math.cos(rotX) * Math.cos(rotY);
+  camera.lookAt(0, 0, 0);
+  if (autoRotate && !isDragging) {
+    rotY += 0.002;
+  }
+}
+
+function onResize() {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+// ============ INTERACTION ============
+function onClick(event) {
+  const rect = renderer.domElement.getBoundingClientRect();
+  mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(mouse, camera);
+  const allMeshes = [...conceptMeshes, ...docMeshes];
+  const intersects = raycaster.intersectObjects(allMeshes);
+  if (intersects.length > 0) {
+    const obj = intersects[0].object;
+    const id = obj.userData.id;
+    selectedNodeId = id;
+    showDetail(id, obj.userData.type);
+    // Highlight
+    allMeshes.forEach(m => {
+      if (m.userData.id === id) {
+        m.scale.setScalar(1.8);
+      } else {
+        m.scale.setScalar(1.0);
+      }
+    });
+  } else {
+    selectedNodeId = null;
+    document.getElementById('detail-panel').innerHTML = '<p style="color:#667;font-size:13px">👆 点击球体上的节点查看详细信息</p>';
+    [...conceptMeshes, ...docMeshes].forEach(m => m.scale.setScalar(1.0));
+  }
+}
+
+function onMouseMove(event) {
+  const rect = renderer.domElement.getBoundingClientRect();
+  mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(mouse, camera);
+  const allMeshes = [...conceptMeshes, ...docMeshes];
+  const intersects = raycaster.intersectObjects(allMeshes);
+  document.body.style.cursor = intersects.length > 0 ? 'pointer' : 'default';
+  // Hover highlight
+  allMeshes.forEach(m => {
+    if (intersects.length > 0 && intersects[0].object === m) {
+      if (m.userData.id !== selectedNodeId) m.scale.setScalar(1.4);
+    } else if (m.userData.id !== selectedNodeId) {
+      m.scale.setScalar(1.0);
+    }
+  });
+}
+
+function onKeyDown(e) {
+  if (e.key === 'r' || e.key === 'R') { autoRotate = !autoRotate; }
+  if (e.key === 'f' || e.key === 'F') { rotX = 0.3; rotY = 0.5; zoomLevel = 5.5; }
+  if (e.key === 't' || e.key === 'T') { rotX = Math.PI/2-0.01; rotY = 0; zoomLevel = 7; }
+  if (e.key === '0') { rotX = 0.3; rotY = 0.5; zoomLevel = 5.5; activeDomain=null; activeDifficulty=null; activePath=null; onSearch(''); document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active')); document.querySelectorAll('.filter-group')[0].querySelector('.filter-btn').classList.add('active'); document.querySelectorAll('.filter-group')[1].querySelector('.filter-btn').classList.add('active'); document.querySelectorAll('.filter-group')[2].querySelector('.filter-btn').classList.add('active'); applyFilters(); }
+}
+
+// ============ DETAIL PANEL ============
+function showDetail(id, type) {
+  const panel = document.getElementById('detail-panel');
+  if (type === 'concept') {
+    const c = CONCEPTS.find(x => x.id === id);
+    if (!c) return;
+    const diffColor = DIFF_COLORS[c.difficulty] || '#888';
+    const domainColor = DOMAIN_COLORS[c.domain] || '#888';
+    let sourcesHtml = (c.sources || []).map(s => `<li>${s}</li>`).join('');
+    let evPathHtml = '';
+    if (c.evolution_path) {
+      const ep = EVOLUTION_PATHS.find(e => e.id === c.evolution_path);
+      if (ep) evPathHtml = `<div class="detail-section"><h4>📈 演进路径</h4><p style="color:${ep.color}">${ep.name}</p></div>`;
+    }
+    panel.innerHTML = `
+      <h3 style="color:${domainColor}">${c.name}</h3>
+      <div class="detail-meta">
+        <span style="color:${domainColor}">● ${c.domain}</span> &nbsp;|&nbsp;
+        <span style="color:${diffColor}">● ${c.difficulty_label}</span>
+      </div>
+      <div class="detail-section">
+        <h4>📋 证据/支撑</h4>
+        <p>${c.evidence || '暂无'}</p>
+      </div>
+      <div class="detail-section">
+        <h4>📚 经典文献</h4>
+        <ul>${sourcesHtml}</ul>
+      </div>
+      ${evPathHtml}
+      <div class="detail-section">
+        <h4>📍 位置</h4>
+        <p>纬度 ${c.lat}° &nbsp; 经度 ${c.lon}°</p>
+      </div>
+    `;
+  } else if (type === 'document') {
+    const d = DOCUMENTS.find(x => x.id === id);
+    if (!d) return;
+    const relatedConcepts = (d.related || []).map(rid => {
+      const c = CONCEPTS.find(cc => cc.id === rid);
+      return c ? c.name : rid;
+    }).join('、');
+    panel.innerHTML = `
+      <h3 style="color:#aaa">📄 ${d.name}</h3>
+      <div class="detail-meta"><span>类型：${d.type}</span></div>
+      <div class="detail-section">
+        <h4>🔗 关联概念</h4>
+        <p>${relatedConcepts}</p>
+      </div>
+    `;
+  }
+}
+
+// ============ FILTERS ============
+let activeDomain = null, activeDifficulty = null, activePath = null, searchQuery = '';
+function onSearch(q) {
+  searchQuery = q.toLowerCase();
+  applyFilters();
+}
+function filterDomain(d, el) {
+  activeDomain = d;
+  document.querySelectorAll('.filter-group')[0].querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  applyFilters();
+}
+function filterDifficulty(d, el) {
+  activeDifficulty = d;
+  document.querySelectorAll('.filter-group')[1].querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  applyFilters();
+}
+function filterPath(p, el) {
+  activePath = p;
+  document.querySelectorAll('.filter-group')[2].querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  applyFilters();
+}
+function applyFilters() {
+  conceptMeshes.forEach(mesh => {
+    const c = CONCEPTS.find(x => x.id === mesh.userData.id);
+    if (!c) return;
+    let visible = true;
+    if (activeDomain && c.domain !== activeDomain) visible = false;
+    if (activeDifficulty && c.difficulty !== activeDifficulty) visible = false;
+    if (activePath && c.evolution_path !== activePath) visible = false;
+    if (searchQuery) {
+      const q = searchQuery;
+      const matchName = c.name.toLowerCase().includes(q);
+      const matchDomain = c.domain.toLowerCase().includes(q);
+      const matchEvidence = (c.evidence||'').toLowerCase().includes(q);
+      const matchSources = (c.sources||[]).join(' ').toLowerCase().includes(q);
+      if (!matchName && !matchDomain && !matchEvidence && !matchSources) visible = false;
+    }
+    mesh.visible = visible;
+    mesh.children.forEach(child => { child.visible = visible; });
+  });
+  // Also filter path lines
+  pathLines.forEach(pl => {
+    pl.line.visible = (!activePath || pl.epId === activePath);
+  });
+}
+
+// ============ SIDEBAR TOGGLE ============
+function toggleSidebar() {
+  const sb = document.getElementById('sidebar');
+  const btn = document.getElementById('toggle-sidebar');
+  sb.classList.toggle('collapsed');
+  btn.classList.toggle('chide');
+  btn.textContent = sb.classList.contains('collapsed') ? '▶' : '◀';
+}
+
+// ============ ANIMATION LOOP ============
+function animate() {
+  requestAnimationFrame(animate);
+  updateCamera();
+  renderer.render(scene, camera);
+}
+
+// ============ START ============
+init();
+</script>
+</body>
+</html>
