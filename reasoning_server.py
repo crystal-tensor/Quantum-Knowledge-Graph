@@ -38,43 +38,43 @@ ACTIVE_MODEL_CONFIG: ContextVar[Optional[Dict[str, Any]]] = ContextVar("ACTIVE_M
 MODEL_PROVIDER_PRESETS = [
     {
         "id": "deepseek", "label": "DeepSeek", "api_kind": "openai",
-        "base_url": "https://api.deepseek.com/v1", "models": ["deepseek-chat", "deepseek-reasoner", "deepseek-v4-pro"]
+        "base_url": "https://api.deepseek.com", "models": ["deepseek-v4-pro", "deepseek-v4-flash", "deepseek-chat", "deepseek-reasoner"]
     },
     {
-        "id": "openai", "label": "OpenAI", "api_kind": "openai",
-        "base_url": "https://api.openai.com/v1", "models": ["gpt-4.1", "gpt-4.1-mini", "gpt-4o", "o3"]
+        "id": "openai", "label": "OpenAI", "api_kind": "openai_responses",
+        "base_url": "https://api.openai.com/v1", "models": ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano", "gpt-4.1"]
     },
     {
         "id": "anthropic", "label": "Anthropic Claude", "api_kind": "anthropic",
-        "base_url": "https://api.anthropic.com/v1", "models": ["claude-3-5-sonnet-latest", "claude-3-5-haiku-latest", "claude-3-opus-latest"]
+        "base_url": "https://api.anthropic.com/v1", "models": ["claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5-20251001", "claude-haiku-4-5"]
     },
     {
         "id": "gemini", "label": "Google Gemini", "api_kind": "gemini",
-        "base_url": "https://generativelanguage.googleapis.com/v1beta", "models": ["gemini-1.5-pro", "gemini-1.5-flash", "gemini-2.0-flash"]
+        "base_url": "https://generativelanguage.googleapis.com/v1beta", "models": ["gemini-3.1-pro", "gemini-3.5-flash", "gemini-3-flash", "gemini-2.5-pro", "gemini-2.5-flash"]
     },
     {
         "id": "qwen", "label": "阿里通义千问 Qwen", "api_kind": "openai",
-        "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1", "models": ["qwen-plus", "qwen-max", "qwen-turbo"]
+        "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1", "models": ["qwen3.5-plus", "qwen3-max", "qwen-plus", "qwen-flash", "qwen3-235b-a22b"]
     },
     {
         "id": "kimi", "label": "Moonshot Kimi", "api_kind": "openai",
-        "base_url": "https://api.moonshot.cn/v1", "models": ["moonshot-v1-8k", "moonshot-v1-32k", "moonshot-v1-128k"]
+        "base_url": "https://api.moonshot.cn/v1", "models": ["kimi-k2.6", "kimi-k2.6-code", "kimi-k2.5", "moonshot-v1-128k"]
     },
     {
         "id": "zhipu", "label": "智谱 GLM", "api_kind": "openai",
-        "base_url": "https://open.bigmodel.cn/api/paas/v4", "models": ["glm-4-plus", "glm-4-flash", "glm-4-air"]
+        "base_url": "https://open.bigmodel.cn/api/paas/v4", "models": ["glm-4.7", "glm-4.6", "glm-4.5", "glm-4-plus", "glm-4-flash"]
     },
     {
         "id": "doubao", "label": "火山方舟 Doubao", "api_kind": "openai",
-        "base_url": "https://ark.cn-beijing.volces.com/api/v3", "models": ["doubao-pro-32k", "doubao-lite-32k"]
+        "base_url": "https://ark.cn-beijing.volces.com/api/v3", "models": ["doubao-seed-2-0-pro-260215", "doubao-seed-1-8", "doubao-seed-1-6", "doubao-seed-code"]
     },
     {
         "id": "siliconflow", "label": "SiliconFlow", "api_kind": "openai",
-        "base_url": "https://api.siliconflow.cn/v1", "models": ["deepseek-ai/DeepSeek-V3", "Qwen/Qwen2.5-72B-Instruct", "THUDM/glm-4-9b-chat"]
+        "base_url": "https://api.siliconflow.cn/v1", "models": ["deepseek-ai/DeepSeek-V3.2", "Pro/deepseek-ai/DeepSeek-V3.2", "deepseek-ai/DeepSeek-V3.2-Speciale", "Qwen/Qwen3.5-Plus", "THUDM/GLM-4.6"]
     },
     {
         "id": "openrouter", "label": "OpenRouter", "api_kind": "openai",
-        "base_url": "https://openrouter.ai/api/v1", "models": ["openai/gpt-4o", "anthropic/claude-3.5-sonnet", "google/gemini-pro-1.5"]
+        "base_url": "https://openrouter.ai/api/v1", "models": ["openrouter/free", "openai/gpt-5.5", "google/gemini-3.5-flash", "anthropic/claude-sonnet-4-6", "deepseek/deepseek-v3.2"]
     },
     {
         "id": "custom", "label": "自定义 OpenAI 兼容接口", "api_kind": "openai",
@@ -394,6 +394,30 @@ def openai_chat_url(base_url: str) -> str:
     return f"{base}/chat/completions"
 
 
+def openai_responses_url(base_url: str) -> str:
+    base = (base_url or "").rstrip("/")
+    if base.endswith("/responses"):
+        return base
+    return f"{base}/responses"
+
+
+def model_timeout() -> httpx.Timeout:
+    return httpx.Timeout(connect=30.0, read=120.0, write=30.0, pool=30.0)
+
+
+def extract_api_error_text(response: httpx.Response) -> str:
+    try:
+        data = response.json()
+        if isinstance(data, dict):
+            error = data.get("error") or data.get("detail") or data
+            if isinstance(error, dict):
+                return str(error.get("message") or error.get("msg") or error.get("type") or error)[:800]
+            return str(error)[:800]
+    except Exception:
+        pass
+    return response.text[:800]
+
+
 def split_system_messages(messages: List[Dict[str, str]]) -> Tuple[str, List[Dict[str, str]]]:
     system_parts = []
     regular_messages = []
@@ -420,9 +444,49 @@ async def call_openai_compatible(config: Dict[str, Any], messages, temperature=0
         "stream": stream
     }
 
-    client_timeout = httpx.Timeout(connect=30.0, read=120.0, write=30.0, pool=30.0)
-    client = httpx.AsyncClient(timeout=client_timeout, proxy=None)
+    client = httpx.AsyncClient(timeout=model_timeout(), trust_env=False)
     return client, "POST", openai_chat_url(config["base_url"]), headers, payload
+
+
+def response_text_from_openai_responses(data: Dict[str, Any]) -> str:
+    if data.get("output_text"):
+        return str(data["output_text"]).strip()
+    parts = []
+    for item in data.get("output", []) or []:
+        for content in item.get("content", []) or []:
+            if isinstance(content, dict):
+                if content.get("text"):
+                    parts.append(str(content.get("text")))
+                elif content.get("type") in {"output_text", "text"} and content.get("value"):
+                    parts.append(str(content.get("value")))
+    return "".join(parts).strip()
+
+
+def response_text_from_chat_completion(data: Dict[str, Any]) -> str:
+    choices = data.get("choices") or []
+    if not choices:
+        return ""
+    message = choices[0].get("message") or {}
+    return (message.get("content") or message.get("reasoning_content") or "").strip()
+
+
+async def call_openai_responses(config: Dict[str, Any], messages, temperature=0.7, max_tokens=4096) -> str:
+    headers = {
+        "Authorization": f"Bearer {config['api_key']}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "model": config["model"],
+        "input": messages,
+        "temperature": temperature,
+        "max_output_tokens": max_tokens,
+    }
+    async with httpx.AsyncClient(timeout=model_timeout(), trust_env=False) as client:
+        response = await client.post(openai_responses_url(config["base_url"]), headers=headers, json=payload)
+        if response.status_code != 200:
+            raise HTTPException(status_code=response.status_code, detail=f"{config['provider_label']} API错误: {extract_api_error_text(response)}")
+        data = response.json()
+        return response_text_from_openai_responses(data)
 
 
 async def call_anthropic(config: Dict[str, Any], messages, temperature=0.7, max_tokens=4096) -> str:
@@ -440,10 +504,10 @@ async def call_anthropic(config: Dict[str, Any], messages, temperature=0.7, max_
         "anthropic-version": "2023-06-01",
         "Content-Type": "application/json"
     }
-    async with httpx.AsyncClient(timeout=httpx.Timeout(connect=30.0, read=120.0, write=30.0, pool=30.0), proxy=None) as client:
+    async with httpx.AsyncClient(timeout=model_timeout(), trust_env=False) as client:
         response = await client.post(f"{config['base_url'].rstrip('/')}/messages", headers=headers, json=payload)
         if response.status_code != 200:
-            raise HTTPException(status_code=response.status_code, detail=f"{config['provider_label']} API错误: {response.text[:500]}")
+            raise HTTPException(status_code=response.status_code, detail=f"{config['provider_label']} API错误: {extract_api_error_text(response)}")
         data = response.json()
         return "".join(part.get("text", "") for part in data.get("content", []) if part.get("type") == "text").strip()
 
@@ -464,10 +528,10 @@ async def call_gemini(config: Dict[str, Any], messages, temperature=0.7, max_tok
         }
     }
     url = f"{config['base_url'].rstrip('/')}/models/{config['model']}:generateContent?key={config['api_key']}"
-    async with httpx.AsyncClient(timeout=httpx.Timeout(connect=30.0, read=120.0, write=30.0, pool=30.0), proxy=None) as client:
+    async with httpx.AsyncClient(timeout=model_timeout(), trust_env=False) as client:
         response = await client.post(url, json=payload)
         if response.status_code != 200:
-            raise HTTPException(status_code=response.status_code, detail=f"{config['provider_label']} API错误: {response.text[:500]}")
+            raise HTTPException(status_code=response.status_code, detail=f"{config['provider_label']} API错误: {extract_api_error_text(response)}")
         data = response.json()
         parts = data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
         return "".join(part.get("text", "") for part in parts).strip()
@@ -482,10 +546,12 @@ async def call_deepseek_stream(messages, temperature=0.7, max_tokens=4096):
         yield f"data: {msg}\n\n"
         return
 
-    if config["api_kind"] in {"anthropic", "gemini"}:
+    if config["api_kind"] in {"anthropic", "gemini", "openai_responses"}:
         try:
             if config["api_kind"] == "anthropic":
                 content = await call_anthropic(config, messages, temperature, max_tokens)
+            elif config["api_kind"] == "openai_responses":
+                content = await call_openai_responses(config, messages, temperature, max_tokens)
             else:
                 content = await call_gemini(config, messages, temperature, max_tokens)
             msg = json.dumps({"type": "content", "content": content}, ensure_ascii=False)
@@ -550,15 +616,17 @@ async def call_deepseek(messages, temperature=0.7, max_tokens=4096) -> str:
         return await call_anthropic(config, messages, temperature, max_tokens)
     if config["api_kind"] == "gemini":
         return await call_gemini(config, messages, temperature, max_tokens)
+    if config["api_kind"] == "openai_responses":
+        return await call_openai_responses(config, messages, temperature, max_tokens)
 
     client, method, url, headers, payload = await call_openai_compatible(config, messages, temperature, max_tokens, stream=False)
     async with client:
         response = await client.request(method, url, headers=headers, json=payload)
         if response.status_code != 200:
-            error_text = response.text[:500]
+            error_text = extract_api_error_text(response)
             raise HTTPException(status_code=response.status_code, detail=f"{config['provider_label']} API错误: {error_text}")
         data = response.json()
-        return data["choices"][0]["message"]["content"]
+        return response_text_from_chat_completion(data)
 
 
 async def stream_with_model_config(generator, model_config: Optional[Dict[str, Any]], context: str):
@@ -1712,29 +1780,35 @@ async def get_model_providers():
 @app.post("/api/models/test")
 async def test_model(req: ModelTestRequest):
     """测试用户模型配置，测试通过后前端才允许用于推演。"""
-    raw_config = req.model_dump() if hasattr(req, "model_dump") else req.dict()
-    config = require_model_config(raw_config)
-    test_messages = [
-        {"role": "system", "content": "You are a connection test assistant. Reply only with OK."},
-        {"role": "user", "content": "Reply OK if this model connection works."}
-    ]
-    token = ACTIVE_MODEL_CONFIG.set(config)
-    started = time.time()
     try:
-        result = await call_deepseek(test_messages, temperature=0, max_tokens=32)
-    finally:
-        ACTIVE_MODEL_CONFIG.reset(token)
+        raw_config = req.model_dump() if hasattr(req, "model_dump") else req.dict()
+        config = require_model_config(raw_config)
+        test_messages = [
+            {"role": "system", "content": "You are a connection test assistant. Reply only with OK."},
+            {"role": "user", "content": "Reply OK if this model connection works."}
+        ]
+        token = ACTIVE_MODEL_CONFIG.set(config)
+        started = time.time()
+        try:
+            result = await call_deepseek(test_messages, temperature=0, max_tokens=128)
+        finally:
+            ACTIVE_MODEL_CONFIG.reset(token)
 
-    if not result or not result.strip():
-        raise HTTPException(status_code=502, detail="模型没有返回有效内容")
-    return {
-        "ok": True,
-        "provider": config["provider"],
-        "provider_label": config["provider_label"],
-        "model": config["model"],
-        "latency_ms": int((time.time() - started) * 1000),
-        "sample": result.strip()[:120]
-    }
+        if not result or not result.strip():
+            raise HTTPException(status_code=502, detail="模型没有返回有效内容")
+        return {
+            "ok": True,
+            "provider": config["provider"],
+            "provider_label": config["provider_label"],
+            "model": config["model"],
+            "base_url": config["base_url"],
+            "latency_ms": int((time.time() - started) * 1000),
+            "sample": result.strip()[:120]
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"模型测试调用异常: {type(e).__name__}: {str(e)}")
 
 
 @app.post("/api/subgraph")

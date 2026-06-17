@@ -238,7 +238,6 @@ body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;backgr
 
     <div class="quick-questions">
       <span class="quick-q">量子计算未来5年趋势</span>
-      <span class="quick-q">超导量子能否容错</span>
       <span class="quick-q">中国量子产业格局</span>
       <span class="quick-q">量子纠错何时突破</span>
     </div>
@@ -272,7 +271,8 @@ body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;backgr
     </div>
     <div class="model-form-row">
       <label>模型名称</label>
-      <input id="model-name" type="text" placeholder="例如 gpt-4.1 / deepseek-chat / qwen-plus">
+      <input id="model-name" type="text" list="model-name-list" placeholder="例如 gpt-5.5 / deepseek-v4-pro / qwen3.5-plus">
+      <datalist id="model-name-list"></datalist>
     </div>
     <div class="model-form-row">
       <label>API Base URL</label>
@@ -343,6 +343,7 @@ let isReasoning = false;
 let lastReasoningResult = null;  // 保存最近一次推演结果用于导出
 let lastPhaseEl = null;  // 追踪当前活动的phase indicator元素
 let questionLang = 'zh';  // 当前问题的语言: 'zh' 或 'en'
+let IMA_SOURCE_TOTAL = 436;
 
 function hideInitialLoading() {
   const loadingEl = document.getElementById('loading');
@@ -522,6 +523,25 @@ function t(key) {
   return text;
 }
 
+const LOCAL_SERVER_ORIGIN = 'http://127.0.0.1:6122';
+const IS_FILE_MODE = window.location.protocol === 'file:';
+
+function appUrl(path) {
+  if (!path) return path;
+  if (/^https?:\/\//i.test(path)) return path;
+  if (!IS_FILE_MODE) return path;
+  if (path.startsWith('/')) return LOCAL_SERVER_ORIGIN + path;
+  if (path.startsWith('./')) return LOCAL_SERVER_ORIGIN + '/' + path.slice(2);
+  return LOCAL_SERVER_ORIGIN + '/' + path.replace(/^\/+/, '');
+}
+
+function appFetch(path, options) {
+  return fetch(appUrl(path), options);
+}
+
+window.appUrl = appUrl;
+window.appFetch = appFetch;
+
 function applyUILanguage() {
   const L = UI_TEXT[questionLang];
   document.title = L.title;
@@ -537,13 +557,10 @@ function applyUILanguage() {
   document.querySelectorAll('.mode-tab')[1].textContent = L.tabSimulation;
   document.getElementById('question-input').placeholder = L.inputPlaceholder;
   document.getElementById('ask-btn').textContent = L.askBtn;
-  const quickQsEl = document.querySelectorAll('.quick-q');
-  if (quickQsEl.length >= 4) {
-    quickQsEl[0].textContent = L.quickQ1;
-    quickQsEl[1].textContent = L.quickQ2;
-    quickQsEl[2].textContent = L.quickQ3;
-    quickQsEl[3].textContent = L.quickQ4;
-  }
+  const quickTexts = [L.quickQ1, L.quickQ3, L.quickQ4];
+  document.querySelectorAll('.quick-q').forEach((el, index) => {
+    el.textContent = quickTexts[index] || '';
+  });
   const loadingTextEl = document.querySelector('#loading p');
   if (loadingTextEl) loadingTextEl.textContent = L.loadingText;
   document.querySelector('#export-modal .modal-title').childNodes[0].textContent = L.exportModalTitle;
@@ -1099,12 +1116,12 @@ function getTypeLabel(type) {
 
 async function loadGraphAndRender() {
   try {
-    const resp = await fetch('/api/graph/full');
+    const resp = await appFetch('/api/graph/full');
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     GRAPH_DATA = await resp.json();
   } catch(e) {
     try {
-      const resp = await fetch('./graph_data.json');
+      const resp = await appFetch('./graph_data.json');
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       GRAPH_DATA = await resp.json();
     } catch(e2) {
@@ -1125,6 +1142,17 @@ async function loadGraphAndRender() {
         })))
       };
     }
+  }
+
+  try {
+    const metaResp = await appFetch('./knowledge_metadata.json');
+    if (metaResp.ok) {
+      const meta = await metaResp.json();
+      const total = (meta.knowledge_bases || []).reduce((sum, kb) => sum + Number(kb.total_size || 0), 0);
+      if (total > 0) IMA_SOURCE_TOTAL = total;
+    }
+  } catch (e) {
+    // Keep the built-in total when metadata is unavailable.
   }
 
   window.GRAPH_DATA = GRAPH_DATA;
@@ -1179,7 +1207,10 @@ function renderResearchMap() {
   });
 
   const graphReportCount = (GRAPH_DATA?.nodes || []).filter(n => n.type === 'report').length;
-  const sourceCount = new Set(RESEARCH_NODES.flatMap(n => n.sources.map(s => s.short))).size + graphReportCount;
+  const sourceCount = Math.max(
+    IMA_SOURCE_TOTAL,
+    new Set(RESEARCH_NODES.flatMap(n => n.sources.map(s => s.short))).size + graphReportCount
+  );
   const satelliteTypes = new Set(['company','organization','person','tool','material','report']);
   const satelliteNodes = mapNodes.filter(n => satelliteTypes.has(n.type) && !researchNodeById[n.id]);
   const surfaceNodes = mapNodes.filter(n => !satelliteNodes.includes(n));
@@ -1767,7 +1798,7 @@ function setMapMode(mode) {
     const frame = document.getElementById('classic-2d-frame');
     if (frame && !frame.getAttribute('src')) {
       frame.addEventListener('load', () => centerClassic2DFrame(), { once: true });
-      frame.setAttribute('src', frame.dataset.src);
+      frame.setAttribute('src', appUrl(frame.dataset.src));
     } else {
       centerClassic2DFrame();
     }
@@ -1886,12 +1917,13 @@ function getLatestMode() {
 // ============================================================
 const MODEL_STORAGE_KEY = 'quantum_kg_model_config_v1';
 let modelProviders = [];
+let serverDefaultModelReady = false;
 let customModelState = {
   enabled: false,
   provider: 'deepseek',
   api_kind: 'openai',
-  model: 'deepseek-chat',
-  base_url: 'https://api.deepseek.com/v1',
+  model: 'deepseek-v4-pro',
+  base_url: 'https://api.deepseek.com',
   api_key: '',
   tested: false,
   tested_signature: ''
@@ -1925,6 +1957,14 @@ function loadModelState() {
   try {
     const raw = localStorage.getItem(MODEL_STORAGE_KEY);
     if (raw) customModelState = { ...customModelState, ...JSON.parse(raw) };
+    if (customModelState.provider === 'deepseek' && customModelState.base_url === 'https://api.deepseek.com/v1') {
+      customModelState.base_url = 'https://api.deepseek.com';
+      customModelState.tested = false;
+      customModelState.tested_signature = '';
+    }
+    if (customModelState.provider === 'deepseek' && (!customModelState.model || customModelState.model === 'deepseek-chat') && !customModelState.tested) {
+      customModelState.model = 'deepseek-v4-pro';
+    }
     if (customModelState.tested && customModelState.tested_signature === modelSignature(customModelState) && customModelState.api_key) {
       customModelState.enabled = true;
     }
@@ -1940,11 +1980,20 @@ function setModelStatus(message, cls = '') {
   el.textContent = message || '';
 }
 
+function updateModelNameOptions(providerId) {
+  const listEl = document.getElementById('model-name-list');
+  if (!listEl) return;
+  const provider = modelProviders.find(p => p.id === providerId);
+  const models = provider?.models || [];
+  listEl.innerHTML = models.map(model => `<option value="${escapeHTML(model)}"></option>`).join('');
+}
+
 function fillModelForm() {
   const providerSelect = document.getElementById('model-provider');
   if (!providerSelect) return;
   providerSelect.innerHTML = modelProviders.map(p => `<option value="${escapeHTML(p.id)}">${escapeHTML(p.label)}</option>`).join('');
   providerSelect.value = customModelState.provider || 'deepseek';
+  updateModelNameOptions(providerSelect.value);
   document.getElementById('model-enabled').checked = !!customModelState.enabled;
   document.getElementById('model-name').value = customModelState.model || '';
   document.getElementById('model-base-url').value = customModelState.base_url || '';
@@ -1959,6 +2008,7 @@ function fillModelForm() {
 function applyProviderPreset(providerId) {
   const provider = modelProviders.find(p => p.id === providerId);
   if (!provider) return;
+  updateModelNameOptions(providerId);
   document.getElementById('model-name').value = provider.models?.[0] || '';
   document.getElementById('model-base-url').value = provider.base_url || '';
   customModelState.tested = false;
@@ -1969,7 +2019,16 @@ function applyProviderPreset(providerId) {
 async function loadModelProviders() {
   loadModelState();
   try {
-    const resp = await fetch('/api/models/providers');
+    const healthResp = await appFetch('/api/health');
+    if (healthResp.ok) {
+      const health = await healthResp.json();
+      serverDefaultModelReady = !!health.default_model_ready;
+    }
+  } catch (e) {
+    serverDefaultModelReady = false;
+  }
+  try {
+    const resp = await appFetch('/api/models/providers');
     if (resp.ok) {
       const data = await resp.json();
       modelProviders = data.providers || [];
@@ -1979,8 +2038,8 @@ async function loadModelProviders() {
   }
   if (!modelProviders.length) {
     modelProviders = [
-      { id:'deepseek', label:'DeepSeek', api_kind:'openai', base_url:'https://api.deepseek.com/v1', models:['deepseek-chat'] },
-      { id:'openai', label:'OpenAI', api_kind:'openai', base_url:'https://api.openai.com/v1', models:['gpt-4.1'] },
+      { id:'deepseek', label:'DeepSeek', api_kind:'openai', base_url:'https://api.deepseek.com', models:['deepseek-v4-pro', 'deepseek-v4-flash', 'deepseek-chat', 'deepseek-reasoner'] },
+      { id:'openai', label:'OpenAI', api_kind:'openai_responses', base_url:'https://api.openai.com/v1', models:['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.4-nano', 'gpt-4.1'] },
       { id:'custom', label:'自定义 OpenAI 兼容接口', api_kind:'openai', base_url:'', models:[] }
     ];
   }
@@ -1989,7 +2048,12 @@ async function loadModelProviders() {
 
 function getActiveModelConfigOrNull() {
   const cfg = { ...customModelState };
-  if (!cfg.enabled) return null;
+  if (!cfg.enabled) {
+    if (!serverDefaultModelReady) {
+      return { error: UI_TEXT[questionLang].modelNeedTest };
+    }
+    return null;
+  }
   const currentSig = modelSignature(cfg);
   if (!cfg.tested || cfg.tested_signature !== currentSig) {
     return { error: UI_TEXT[questionLang].modelNeedTest };
@@ -2064,7 +2128,7 @@ async function startReasoning() {
   const endpoint = currentMode === 'simulation' ? '/api/simulate' : '/api/reason';
 
   try {
-    const resp = await fetch(endpoint, {
+    const resp = await appFetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -2227,11 +2291,7 @@ function handleEvent(event, question) {
   else if (eventType === 'complete') {
     predictionResult = event;
     syncLatestRunState();
-    // 标记phase indicator为完成
-    if (lastPhaseEl) {
-      lastPhaseEl.classList.add('completed');
-      lastPhaseEl = null;
-    }
+    completePhaseIndicators();
     // Highlight relevant nodes on 3D globe
     if (event.subgraph && event.subgraph.seed_nodes) {
       event.subgraph.seed_nodes.forEach(sn => flashNode(sn.id, 5000));
@@ -2256,13 +2316,14 @@ function handleEvent(event, question) {
       else if (phase === 'prediction') msgText = t('phasePredicting');
       else if (phase === 'complete') msgText = t('simulationDone');
     }
-    const phaseHtml = `<div class="phase-indicator"><div class="spinner"></div>${escapeHTML(msgText)}</div>`;
+    completePhaseIndicators();
+    const phaseDone = phase === 'complete';
+    const phaseHtml = `<div class="phase-indicator${phaseDone ? ' completed' : ''}"><div class="spinner"></div>${escapeHTML(msgText)}</div>`;
     addHTML(phaseHtml);
     // 追踪当前最新的phase indicator
     const allPhases = contentEl.querySelectorAll('.phase-indicator');
     lastPhaseEl = allPhases[allPhases.length - 1];
-    if (phase === 'complete') {
-      lastPhaseEl.classList.add('completed');
+    if (phaseDone) {
       lastPhaseEl = null;
     }
     // 收集阶段消息到simulationData
@@ -2359,11 +2420,7 @@ function handleEvent(event, question) {
   }
   // 模拟模式最终完成
   else if (eventType === 'phase' && event.phase === 'complete') {
-    // 标记当前活动的phase indicator为完成状态
-    if (lastPhaseEl) {
-      lastPhaseEl.classList.add('completed');
-      lastPhaseEl = null;
-    }
+    completePhaseIndicators();
   }
   else if (eventType === 'prediction') {
     predictionResult = event;
@@ -2414,7 +2471,7 @@ async function fetchIMAReferences(question) {
   try {
     const relatedNodeIds = collectReasoningNodeIds(question);
     const localRefs = buildLocalLiteratureReferences(relatedNodeIds);
-    const resp = await fetch('/api/ima/references', {
+    const resp = await appFetch('/api/ima/references', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ question, subgraph_nodes: relatedNodeIds })
@@ -2663,7 +2720,7 @@ testModelBtn.addEventListener('click', async () => {
   testModelBtn.disabled = true;
   setModelStatus(L.modelTesting);
   try {
-    const resp = await fetch('/api/models/test', {
+    const resp = await appFetch('/api/models/test', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -2765,7 +2822,7 @@ doExportBtn.addEventListener('click', async () => {
   try {
     const latestMode = getLatestMode();
     const latestSimulation = getLatestSimulationData();
-    const resp = await fetch('/api/export/report', {
+    const resp = await appFetch('/api/export/report', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -2825,6 +2882,13 @@ function addHTML(html) {
   contentEl.appendChild(div);
 }
 function scrollToBottom() { contentEl.scrollTop = contentEl.scrollHeight; }
+function completePhaseIndicators() {
+  contentEl.querySelectorAll('.phase-indicator:not(.completed)').forEach(el => {
+    el.classList.add('completed');
+  });
+  lastPhaseEl = null;
+}
+window.completePhaseIndicators = completePhaseIndicators;
 function escapeHTML(s) { const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
 function formatContent(s) {
   if (!s) return '';
@@ -2977,6 +3041,46 @@ inputEl.onkeydown = (e) => {
     const ascii = text.replace(/[^\x00-\x7F]/g, '').length;
     return ascii / text.length > 0.7 ? 'en' : 'zh';
   };
+  const fallbackAppUrl = (path) => {
+    if (!path || /^https?:\/\//i.test(path)) return path;
+    if (window.location.protocol !== 'file:') return path;
+    const origin = 'http://127.0.0.1:6122';
+    if (path.startsWith('/')) return origin + path;
+    if (path.startsWith('./')) return origin + '/' + path.slice(2);
+    return origin + '/' + path.replace(/^\/+/, '');
+  };
+  const fallbackFetch = (path, options) => {
+    if (typeof window.appFetch === 'function') return window.appFetch(path, options);
+    return fetch(fallbackAppUrl(path), options);
+  };
+  const fallbackModelSignature = (cfg) => [
+    cfg.provider,
+    cfg.api_kind,
+    cfg.model,
+    cfg.base_url,
+    cfg.api_key ? 'key:' + cfg.api_key.slice(-6) : 'no-key'
+  ].join('|');
+  const readFallbackModelConfig = () => {
+    if (typeof window.getActiveModelConfigOrNull === 'function') {
+      return window.getActiveModelConfigOrNull();
+    }
+    const message = '请先在“模型设置”里完成测试，通过后才能用自己的模型推演。';
+    try {
+      const raw = localStorage.getItem('quantum_kg_model_config_v1');
+      const cfg = raw ? JSON.parse(raw) : null;
+      if (!cfg || !cfg.enabled || !cfg.api_key || !cfg.tested) return { error: message };
+      if (cfg.tested_signature !== fallbackModelSignature(cfg)) return { error: message };
+      return {
+        provider: cfg.provider || 'deepseek',
+        api_kind: cfg.api_kind || 'openai',
+        model: cfg.model,
+        base_url: cfg.base_url,
+        api_key: cfg.api_key
+      };
+    } catch (e) {
+      return { error: message };
+    }
+  };
   const looksTruncatedLocal = (text = '') => {
     const t = String(text || '').trim();
     if (!t || t.length < 120) return true;
@@ -3032,7 +3136,13 @@ inputEl.onkeydown = (e) => {
     if (s.includes('observer')) return 'observer';
     return 'neutral';
   };
+  const completeFallbackPhases = () => {
+    contentEl.querySelectorAll('.phase-indicator:not(.completed)').forEach(el => {
+      el.classList.add('completed');
+    });
+  };
   const renderPhase = (message) => {
+    completeFallbackPhases();
     add(`<div class="phase-indicator"><div class="spinner"></div>${esc(message || '')}</div>`);
   };
   const renderAgentProfile = (agent) => {
@@ -3231,7 +3341,7 @@ inputEl.onkeydown = (e) => {
     window.__latestSimulationData = window.__fallbackSimulationData;
     window.__latestImaReferences = [];
     const lang = langOf(question);
-    const modelConfig = typeof window.getActiveModelConfigOrNull === 'function' ? window.getActiveModelConfigOrNull() : null;
+    const modelConfig = readFallbackModelConfig();
     if (modelConfig?.error) {
       alert(modelConfig.error);
       document.getElementById('model-modal')?.classList.add('open');
@@ -3243,7 +3353,7 @@ inputEl.onkeydown = (e) => {
     add(`<div style="padding:10px 14px;background:rgba(96,165,250,0.08);border:1px solid rgba(96,165,250,0.2);border-radius:8px;margin-bottom:14px;font-size:13px;color:#93c5fd"><b>❓ ${esc(question)}</b></div>`);
 
     try {
-      const resp = await fetch(endpoint, {
+      const resp = await fallbackFetch(endpoint, {
         method: 'POST',
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify({ question, mode, rounds: 3, lang, model_config: modelConfig })
@@ -3286,6 +3396,7 @@ inputEl.onkeydown = (e) => {
             }
           } else if (event.type === 'phase') {
             if (event.phase === 'complete') {
+              completeFallbackPhases();
               add(`<div class="phase-indicator completed"><div class="spinner"></div>${esc(event.message || (lang === 'en' ? 'Multi-agent simulation completed' : '多智能体模拟完成'))}</div>`);
             } else {
               renderPhase(event.message || '');
@@ -3331,6 +3442,7 @@ inputEl.onkeydown = (e) => {
             const label = lang === 'en' ? '🎯 Coordinator Summary:' : '🎯 协调者总结：';
             add(`<div class="coordinator-box"><b>${label}</b><br>${fmt(event.content || '')}</div>`);
           } else if (event.type === 'prediction') {
+            completeFallbackPhases();
             window.__fallbackPredictionResult = event;
             window.__latestPredictionResult = event;
             window.__latestReasoningSteps = window.__fallbackReasoningSteps || [];
@@ -3341,6 +3453,7 @@ inputEl.onkeydown = (e) => {
               renderReasoningLiteratureList(event, lang, question);
             }
           } else if (event.type === 'complete') {
+            completeFallbackPhases();
             if (mode === 'simulation') {
               add(`<div class="phase-indicator completed"><div class="spinner"></div>${esc(event.message || (lang === 'en' ? 'Multi-agent simulation completed' : '多智能体模拟完成'))}</div>`);
             } else {
