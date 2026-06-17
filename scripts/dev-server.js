@@ -5,7 +5,7 @@ const { spawn } = require("node:child_process");
 const ROOT = path.resolve(__dirname, "..");
 const HOST = process.env.HOST || "0.0.0.0";
 const PORT = Number(process.env.PORT || 6122);
-const PYTHON = process.env.PYTHON || "/usr/bin/python3";
+const PYTHON = process.env.PYTHON || "python3";
 const HEALTH_URL = `http://127.0.0.1:${PORT}/api/health`;
 
 let serverProcess = null;

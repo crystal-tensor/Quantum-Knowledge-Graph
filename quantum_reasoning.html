@@ -300,7 +300,6 @@ body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;backgr
       <label>报告语言</label>
       <div class="modal-options" id="lang-options">
         <div class="modal-option selected" data-value="zh">🇨🇳 中文</div>
-        <div class="modal-option" data-value="en">🇺🇸 English</div>
       </div>
     </div>
     <div class="modal-section">
@@ -2966,8 +2965,14 @@ doExportBtn.addEventListener('click', async () => {
         ? (questionLang === 'en' ? '✅ PDF generated with fallback engine and downloaded!' : '✅ PDF 已用备用引擎生成并下载！')
         : (questionLang === 'en' ? '✅ Report generated and downloaded!' : '✅ 报告已生成并下载！');
     } else {
-      const err = await resp.json();
-      exportStatus.textContent = `${questionLang === 'en' ? '❌ Export failed:' : '❌ 生成失败:'} ${err.detail || (questionLang === 'en' ? 'Unknown error' : '未知错误')}`;
+      let detail = questionLang === 'en' ? 'Unknown error' : '未知错误';
+      try {
+        const err = await resp.json();
+        detail = err.detail || detail;
+      } catch {
+        detail = (await resp.text().catch(() => '')) || detail;
+      }
+      exportStatus.textContent = `${questionLang === 'en' ? '❌ Export failed:' : '❌ 生成失败:'} ${detail}`;
     }
   } catch(e) {
     exportStatus.textContent = `${questionLang === 'en' ? '❌ Export failed:' : '❌ 生成失败:'} ${e.message}`;
