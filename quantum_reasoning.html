@@ -207,10 +207,10 @@ body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;backgr
     <div id="globe-stats"></div>
     <div id="path-dock"></div>
     <div id="research-detail">
-      <h3>正式研究地图</h3>
-      <div class="muted">点击地球节点查看原始论文、证据链、难度和研究演进路径。路径表示从问题提出到算法突破再到硬件实现的知识推进路线。</div>
+      <h3>研究地图</h3>
+      <div class="muted">点推演能显示知识节点，证据链和研究演进路径。外层节点是公司、工具、人物、机构等卫星式实体。</div>
     </div>
-    <iframe id="classic-2d-frame" title="二维量子知识图谱" data-src="./quantum_knowledge_graph.html"></iframe>
+    <iframe id="classic-2d-frame" title="二维量子知识图谱" data-src="./quantum_knowledge_graph.html?v=source-contact-20260617"></iframe>
     <div id="globe-hint">拖拽旋转 | 滚轮缩放 | 点击节点查看文献证据 | R 自动旋转 | 0 重置</div>
   </div>
 
@@ -1542,8 +1542,8 @@ function showResearchDetail(node) {
   if (!el) return;
   if (!node) {
     el.innerHTML = mapLang === 'en'
-      ? `<h3>Formal Research Map</h3><div class="muted">Click a node to inspect evidence, sources, difficulty and research evolution paths. Outer nodes are satellite-style entities such as companies, tools, people and institutions.</div>`
-      : `<h3>正式研究地图</h3><div class="muted">点击地球节点查看原始论文、证据链、难度和研究演进路径。外层节点是公司、工具、人物、机构等卫星式实体。</div>`;
+      ? `<h3>Research Map</h3><div class="muted">Run reasoning to highlight knowledge nodes, evidence chains and research evolution paths. Outer nodes are satellite-style entities such as companies, tools, people and institutions.</div>`
+      : `<h3>研究地图</h3><div class="muted">点推演能显示知识节点，证据链和研究演进路径。外层节点是公司、工具、人物、机构等卫星式实体。</div>`;
     return;
   }
   if (!node.sources) {
@@ -1916,9 +1916,10 @@ function setMapMode(mode) {
   controls.enabled = !is2d;
   if (is2d) {
     const frame = document.getElementById('classic-2d-frame');
-    if (frame && !frame.getAttribute('src')) {
+    const targetSrc = appUrl(frame?.dataset?.src || './quantum_knowledge_graph.html?v=source-contact-20260617');
+    if (frame && frame.getAttribute('src') !== targetSrc) {
       frame.addEventListener('load', () => centerClassic2DFrame(), { once: true });
-      frame.setAttribute('src', appUrl(frame.dataset.src));
+      frame.setAttribute('src', targetSrc);
     } else {
       centerClassic2DFrame();
     }
@@ -2861,7 +2862,17 @@ saveModelBtn.addEventListener('click', () => {
     cfg.tested_signature = '';
   }
   saveModelState(cfg);
-  setModelStatus(UI_TEXT[questionLang].modelSaved + (cfg.enabled && !cfg.tested ? ` · ${UI_TEXT[questionLang].modelNeedTest}` : ''), cfg.enabled && !cfg.tested ? 'fail' : 'ok');
+  const isReady = !!(cfg.enabled && cfg.tested && cfg.tested_signature === modelSignature(cfg));
+  setModelStatus(
+    UI_TEXT[questionLang].modelSaved + (isReady
+      ? (questionLang === 'en' ? ' · Refreshing page...' : ' · 正在刷新页面...')
+      : (cfg.enabled && !cfg.tested ? ` · ${UI_TEXT[questionLang].modelNeedTest}` : '')
+    ),
+    cfg.enabled && !cfg.tested ? 'fail' : 'ok'
+  );
+  if (isReady) {
+    setTimeout(() => window.location.reload(), 450);
+  }
 });
 
 loadModelProviders();
