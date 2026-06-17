@@ -149,6 +149,16 @@ body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;backgr
 .modal-export-btn:hover{opacity:.9}
 .modal-export-btn:disabled{opacity:.4;cursor:not-allowed}
 .export-status{margin-top:10px;font-size:11px;color:#78909c;text-align:center}
+.model-form-row{margin-bottom:12px}
+.model-form-row label{display:block;font-size:12px;color:#78909c;margin-bottom:6px;font-weight:600}
+.model-form-row input,.model-form-row select{width:100%;padding:9px 11px;background:rgba(255,255,255,0.05);border:1px solid #1e3a5f;border-radius:7px;color:#e0e0e0;font-size:12px;outline:none}
+.model-form-row select option{background:#0d1b2a;color:#e0e0e0}
+.model-inline{display:flex;gap:8px;align-items:center}
+.model-inline input{width:auto}
+.model-status{margin-top:10px;font-size:11px;color:#78909c;line-height:1.6}
+.model-status.ok{color:#34D399}
+.model-status.fail{color:#F87171}
+.model-note{font-size:10px;color:#5c7a99;line-height:1.5;margin-top:6px}
 
 /* Tooltip */
 #tooltip{position:fixed;pointer-events:none;background:rgba(13,27,42,0.95);border:1px solid #1e3a5f;border-radius:8px;padding:8px 12px;font-size:12px;color:#e0e0e0;display:none;z-index:100;max-width:240px}
@@ -211,6 +221,7 @@ body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;backgr
         <h2>🔮 知识推演引擎</h2>
       </div>
       <div class="header-actions">
+        <button class="header-btn" id="model-settings-btn" title="模型设置">⚙️ 模型设置</button>
         <button class="header-btn" id="export-btn" title="导出报告">📄 导出报告</button>
       </div>
     </div>
@@ -243,6 +254,40 @@ body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;backgr
 </div>
 
 <div id="tooltip"></div>
+
+<!-- 模型设置模态框 -->
+<div class="modal-overlay" id="model-modal">
+  <div class="modal-box">
+    <div class="modal-title">
+      ⚙️ 大模型设置
+      <span class="modal-close" id="model-modal-close">✕</span>
+    </div>
+    <div class="model-form-row model-inline">
+      <input id="model-enabled" type="checkbox">
+      <label for="model-enabled" style="margin:0">使用我自己的大模型 API 进行推演</label>
+    </div>
+    <div class="model-form-row">
+      <label>模型厂商</label>
+      <select id="model-provider"></select>
+    </div>
+    <div class="model-form-row">
+      <label>模型名称</label>
+      <input id="model-name" type="text" placeholder="例如 gpt-4.1 / deepseek-chat / qwen-plus">
+    </div>
+    <div class="model-form-row">
+      <label>API Base URL</label>
+      <input id="model-base-url" type="text" placeholder="https://api.example.com/v1">
+    </div>
+    <div class="model-form-row">
+      <label>API Key</label>
+      <input id="model-api-key" type="password" placeholder="只保存在当前浏览器本地">
+      <div class="model-note">API Key 会保存在本机浏览器 localStorage 中，不会写入项目文件；测试通过后才允许用于推演。</div>
+    </div>
+    <button class="modal-export-btn" id="test-model-btn">🧪 测试模型</button>
+    <button class="modal-export-btn" id="save-model-btn" style="background:linear-gradient(135deg,#10b981,#3b82f6)">保存设置</button>
+    <div class="model-status" id="model-status"></div>
+  </div>
+</div>
 
 <!-- 导出模态框 -->
 <div class="modal-overlay" id="export-modal">
@@ -315,6 +360,21 @@ const UI_TEXT = {
     hint: '拖拽旋转 | 滚轮缩放 | 点击节点查看文献证据 | R 自动旋转 | 0 重置',
     panelTitle: '🔮 知识推演引擎',
     panelSubtitle: 'MiroFish-Style Reasoning & Simulation',
+    modelSettingsBtn: '⚙️ 模型设置',
+    modelModalTitle: '⚙️ 大模型设置',
+    modelEnabledLabel: '使用我自己的大模型 API 进行推演',
+    modelProviderLabel: '模型厂商',
+    modelNameLabel: '模型名称',
+    modelBaseUrlLabel: 'API Base URL',
+    modelKeyLabel: 'API Key',
+    modelKeyNote: 'API Key 会保存在本机浏览器 localStorage 中，不会写入项目文件；测试通过后才允许用于推演。',
+    modelTestBtn: '🧪 测试模型',
+    modelSaveBtn: '保存设置',
+    modelTesting: '正在测试模型连接...',
+    modelTestOk: '✅ 测试通过，可以用于推演',
+    modelTestFail: '❌ 测试失败: ',
+    modelSaved: '✅ 设置已保存',
+    modelNeedTest: '请先在“模型设置”里完成测试，通过后才能用自己的模型推演。',
     exportBtn: '📄 导出报告',
     tabReasoning: '🔬 逐步推理',
     tabSimulation: '👥 多智能体模拟',
@@ -375,6 +435,21 @@ const UI_TEXT = {
     hint: 'Drag to rotate | Scroll to zoom | Click node for evidence | R auto-rotate | 0 reset',
     panelTitle: '🔮 Knowledge Reasoning Engine',
     panelSubtitle: 'MiroFish-Style Reasoning & Simulation',
+    modelSettingsBtn: '⚙️ Model Settings',
+    modelModalTitle: '⚙️ Model Settings',
+    modelEnabledLabel: 'Use my own model API for reasoning',
+    modelProviderLabel: 'Provider',
+    modelNameLabel: 'Model',
+    modelBaseUrlLabel: 'API Base URL',
+    modelKeyLabel: 'API Key',
+    modelKeyNote: 'API Key is stored only in this browser localStorage and will not be written into project files. The model must pass testing before running.',
+    modelTestBtn: '🧪 Test Model',
+    modelSaveBtn: 'Save Settings',
+    modelTesting: 'Testing model connection...',
+    modelTestOk: '✅ Test passed. This model can be used for reasoning.',
+    modelTestFail: '❌ Test failed: ',
+    modelSaved: '✅ Settings saved',
+    modelNeedTest: 'Please test the custom model in Model Settings before running reasoning.',
     exportBtn: '📄 Export Report',
     tabReasoning: '🔬 Step-by-Step Reasoning',
     tabSimulation: '👥 Multi-Agent Simulation',
@@ -454,7 +529,9 @@ function applyUILanguage() {
   document.querySelector('#globe-title p').textContent = L.subtitle;
   document.getElementById('globe-hint').textContent = L.hint;
   document.querySelector('#panel-header h2').textContent = L.panelTitle;
-  document.querySelector('#panel-header p').textContent = L.panelSubtitle;
+  const panelSubtitleEl = document.querySelector('#panel-header p');
+  if (panelSubtitleEl) panelSubtitleEl.textContent = L.panelSubtitle;
+  document.querySelector('#model-settings-btn').textContent = L.modelSettingsBtn;
   document.querySelector('#export-btn').textContent = L.exportBtn;
   document.querySelectorAll('.mode-tab')[0].textContent = L.tabReasoning;
   document.querySelectorAll('.mode-tab')[1].textContent = L.tabSimulation;
@@ -479,6 +556,22 @@ function applyUILanguage() {
   }
   document.getElementById('export-dir-btn').textContent = L.browseBtn;
   document.getElementById('do-export-btn').textContent = L.generateBtn;
+  const modelTitle = document.querySelector('#model-modal .modal-title');
+  if (modelTitle) modelTitle.childNodes[0].textContent = L.modelModalTitle;
+  const modelLabels = document.querySelectorAll('#model-modal label');
+  if (modelLabels.length >= 5) {
+    modelLabels[0].textContent = L.modelEnabledLabel;
+    modelLabels[1].textContent = L.modelProviderLabel;
+    modelLabels[2].textContent = L.modelNameLabel;
+    modelLabels[3].textContent = L.modelBaseUrlLabel;
+    modelLabels[4].textContent = L.modelKeyLabel;
+  }
+  const modelNote = document.querySelector('#model-modal .model-note');
+  if (modelNote) modelNote.textContent = L.modelKeyNote;
+  const testModelBtn = document.getElementById('test-model-btn');
+  if (testModelBtn) testModelBtn.textContent = L.modelTestBtn;
+  const saveModelBtn = document.getElementById('save-model-btn');
+  if (saveModelBtn) saveModelBtn.textContent = L.modelSaveBtn;
 
   // 空状态文字
   const emptyState = contentEl.querySelector('div');
@@ -1735,7 +1828,7 @@ quickQs.forEach(q => {
   q.addEventListener('click', () => {
     if (isReasoning) return;
     inputEl.value = q.textContent;
-    startReasoning();
+    inputEl.focus();
   });
 });
 
@@ -1788,12 +1881,156 @@ function getLatestMode() {
   return currentMode || document.querySelector('.mode-tab.active')?.dataset.mode || 'reasoning';
 }
 
+// ============================================================
+// 大模型设置
+// ============================================================
+const MODEL_STORAGE_KEY = 'quantum_kg_model_config_v1';
+let modelProviders = [];
+let customModelState = {
+  enabled: false,
+  provider: 'deepseek',
+  api_kind: 'openai',
+  model: 'deepseek-chat',
+  base_url: 'https://api.deepseek.com/v1',
+  api_key: '',
+  tested: false,
+  tested_signature: ''
+};
+
+function modelSignature(cfg) {
+  return [cfg.provider, cfg.api_kind, cfg.model, cfg.base_url, cfg.api_key ? 'key:' + cfg.api_key.slice(-6) : 'no-key'].join('|');
+}
+
+function readModelForm() {
+  const providerSelect = document.getElementById('model-provider');
+  const selected = modelProviders.find(p => p.id === providerSelect.value) || modelProviders[0] || {};
+  return {
+    enabled: document.getElementById('model-enabled').checked,
+    provider: providerSelect.value || selected.id || 'deepseek',
+    api_kind: selected.api_kind || 'openai',
+    model: document.getElementById('model-name').value.trim(),
+    base_url: document.getElementById('model-base-url').value.trim(),
+    api_key: document.getElementById('model-api-key').value.trim(),
+    tested: customModelState.tested,
+    tested_signature: customModelState.tested_signature
+  };
+}
+
+function saveModelState(state) {
+  customModelState = { ...customModelState, ...state };
+  localStorage.setItem(MODEL_STORAGE_KEY, JSON.stringify(customModelState));
+}
+
+function loadModelState() {
+  try {
+    const raw = localStorage.getItem(MODEL_STORAGE_KEY);
+    if (raw) customModelState = { ...customModelState, ...JSON.parse(raw) };
+    if (customModelState.tested && customModelState.tested_signature === modelSignature(customModelState) && customModelState.api_key) {
+      customModelState.enabled = true;
+    }
+  } catch (e) {
+    console.warn('Model settings parse failed', e);
+  }
+}
+
+function setModelStatus(message, cls = '') {
+  const el = document.getElementById('model-status');
+  if (!el) return;
+  el.className = `model-status ${cls}`.trim();
+  el.textContent = message || '';
+}
+
+function fillModelForm() {
+  const providerSelect = document.getElementById('model-provider');
+  if (!providerSelect) return;
+  providerSelect.innerHTML = modelProviders.map(p => `<option value="${escapeHTML(p.id)}">${escapeHTML(p.label)}</option>`).join('');
+  providerSelect.value = customModelState.provider || 'deepseek';
+  document.getElementById('model-enabled').checked = !!customModelState.enabled;
+  document.getElementById('model-name').value = customModelState.model || '';
+  document.getElementById('model-base-url').value = customModelState.base_url || '';
+  document.getElementById('model-api-key').value = customModelState.api_key || '';
+  if (customModelState.tested && customModelState.tested_signature === modelSignature(customModelState)) {
+    setModelStatus(UI_TEXT[questionLang].modelTestOk, 'ok');
+  } else {
+    setModelStatus('');
+  }
+}
+
+function applyProviderPreset(providerId) {
+  const provider = modelProviders.find(p => p.id === providerId);
+  if (!provider) return;
+  document.getElementById('model-name').value = provider.models?.[0] || '';
+  document.getElementById('model-base-url').value = provider.base_url || '';
+  customModelState.tested = false;
+  customModelState.tested_signature = '';
+  setModelStatus('');
+}
+
+async function loadModelProviders() {
+  loadModelState();
+  try {
+    const resp = await fetch('/api/models/providers');
+    if (resp.ok) {
+      const data = await resp.json();
+      modelProviders = data.providers || [];
+    }
+  } catch (e) {
+    console.warn('Model provider list unavailable', e);
+  }
+  if (!modelProviders.length) {
+    modelProviders = [
+      { id:'deepseek', label:'DeepSeek', api_kind:'openai', base_url:'https://api.deepseek.com/v1', models:['deepseek-chat'] },
+      { id:'openai', label:'OpenAI', api_kind:'openai', base_url:'https://api.openai.com/v1', models:['gpt-4.1'] },
+      { id:'custom', label:'自定义 OpenAI 兼容接口', api_kind:'openai', base_url:'', models:[] }
+    ];
+  }
+  fillModelForm();
+}
+
+function getActiveModelConfigOrNull() {
+  const cfg = { ...customModelState };
+  if (!cfg.enabled) return null;
+  const currentSig = modelSignature(cfg);
+  if (!cfg.tested || cfg.tested_signature !== currentSig) {
+    return { error: UI_TEXT[questionLang].modelNeedTest };
+  }
+  return {
+    provider: cfg.provider,
+    api_kind: cfg.api_kind,
+    model: cfg.model,
+    base_url: cfg.base_url,
+    api_key: cfg.api_key
+  };
+}
+
+window.getActiveModelConfigOrNull = getActiveModelConfigOrNull;
+window.getQuantumModelDebugState = () => {
+  const cfg = { ...customModelState };
+  return {
+    enabled: !!cfg.enabled,
+    provider: cfg.provider,
+    api_kind: cfg.api_kind,
+    model: cfg.model,
+    base_url: cfg.base_url,
+    has_api_key: !!cfg.api_key,
+    tested: !!cfg.tested,
+    signature_ok: cfg.tested_signature === modelSignature(cfg)
+  };
+};
+
 async function startReasoning() {
   const question = inputEl.value.trim();
   if (isReasoning) return;
   if (!question) {
     showEmptyQuestionHint();
     inputEl.focus();
+    return;
+  }
+
+  const modelConfig = getActiveModelConfigOrNull();
+  if (modelConfig?.error) {
+    alert(modelConfig.error);
+    document.getElementById('model-modal')?.classList.add('open');
     return;
   }
 
@@ -1834,7 +2071,8 @@ async function startReasoning() {
         question: question,
         mode: currentMode,
         rounds: 3,
-        lang: questionLang
+        lang: questionLang,
+        model_config: modelConfig
       })
     });
 
@@ -2387,6 +2625,88 @@ window.togglePaywall = function() {
 };
 
 // ============================================================
+// 模型设置事件
+// ============================================================
+const modelSettingsBtn = document.getElementById('model-settings-btn');
+const modelModal = document.getElementById('model-modal');
+const modelModalClose = document.getElementById('model-modal-close');
+const testModelBtn = document.getElementById('test-model-btn');
+const saveModelBtn = document.getElementById('save-model-btn');
+
+modelSettingsBtn.addEventListener('click', () => {
+  fillModelForm();
+  modelModal.classList.add('open');
+});
+modelModalClose.addEventListener('click', () => modelModal.classList.remove('open'));
+modelModal.addEventListener('click', (e) => { if (e.target === modelModal) modelModal.classList.remove('open'); });
+
+document.getElementById('model-provider').addEventListener('change', (e) => {
+  applyProviderPreset(e.target.value);
+});
+
+document.getElementById('model-enabled').addEventListener('change', () => {
+  saveModelState({ ...customModelState, enabled: document.getElementById('model-enabled').checked });
+});
+
+['model-name', 'model-base-url', 'model-api-key'].forEach(id => {
+  document.getElementById(id).addEventListener('input', () => {
+    customModelState.tested = false;
+    customModelState.tested_signature = '';
+    setModelStatus('');
+  });
+});
+
+testModelBtn.addEventListener('click', async () => {
+  const L = UI_TEXT[questionLang];
+  const cfg = readModelForm();
+  const sig = modelSignature(cfg);
+  testModelBtn.disabled = true;
+  setModelStatus(L.modelTesting);
+  try {
+    const resp = await fetch('/api/models/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        provider: cfg.provider,
+        api_kind: cfg.api_kind,
+        model: cfg.model,
+        base_url: cfg.base_url,
+        api_key: cfg.api_key
+      })
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || !data.ok) {
+      throw new Error(data.detail || `HTTP ${resp.status}`);
+    }
+    cfg.tested = true;
+    cfg.tested_signature = sig;
+    cfg.enabled = true;
+    document.getElementById('model-enabled').checked = true;
+    saveModelState(cfg);
+    window.getActiveModelConfigOrNull = getActiveModelConfigOrNull;
+    setModelStatus(`${L.modelTestOk} · ${data.provider_label || cfg.provider} / ${data.model} · ${data.latency_ms || 0}ms`, 'ok');
+  } catch (e) {
+    cfg.tested = false;
+    cfg.tested_signature = '';
+    saveModelState(cfg);
+    setModelStatus(`${L.modelTestFail}${e.message || e}`, 'fail');
+  } finally {
+    testModelBtn.disabled = false;
+  }
+});
+
+saveModelBtn.addEventListener('click', () => {
+  const cfg = readModelForm();
+  if (modelSignature(cfg) !== customModelState.tested_signature) {
+    cfg.tested = false;
+    cfg.tested_signature = '';
+  }
+  saveModelState(cfg);
+  setModelStatus(UI_TEXT[questionLang].modelSaved + (cfg.enabled && !cfg.tested ? ` · ${UI_TEXT[questionLang].modelNeedTest}` : ''), cfg.enabled && !cfg.tested ? 'fail' : 'ok');
+});
+
+loadModelProviders();
+
 // 导出报告
 // ============================================================
 const exportBtn = document.getElementById('export-btn');
@@ -2911,6 +3231,13 @@ inputEl.onkeydown = (e) => {
     window.__latestSimulationData = window.__fallbackSimulationData;
     window.__latestImaReferences = [];
     const lang = langOf(question);
+    const modelConfig = typeof window.getActiveModelConfigOrNull === 'function' ? window.getActiveModelConfigOrNull() : null;
+    if (modelConfig?.error) {
+      alert(modelConfig.error);
+      document.getElementById('model-modal')?.classList.add('open');
+      askBtn.disabled = false;
+      return;
+    }
     const mode = activeMode();
     const endpoint = mode === 'simulation' ? '/api/simulate' : '/api/reason';
     add(`<div style="padding:10px 14px;background:rgba(96,165,250,0.08);border:1px solid rgba(96,165,250,0.2);border-radius:8px;margin-bottom:14px;font-size:13px;color:#93c5fd"><b>❓ ${esc(question)}</b></div>`);
@@ -2919,7 +3246,7 @@ inputEl.onkeydown = (e) => {
       const resp = await fetch(endpoint, {
         method: 'POST',
         headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ question, mode, rounds: 3, lang })
+        body: JSON.stringify({ question, mode, rounds: 3, lang, model_config: modelConfig })
       });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
       const reader = resp.body.getReader();
@@ -3046,7 +3373,7 @@ inputEl.onkeydown = (e) => {
       e.preventDefault();
       e.stopImmediatePropagation();
       inputEl.value = e.target.textContent.trim();
-      runFallback(inputEl.value);
+      inputEl.focus();
     }
   }, true);
   inputEl.addEventListener('keydown', (e) => {

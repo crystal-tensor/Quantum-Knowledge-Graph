@@ -133,6 +133,22 @@ export DEEPSEEK_API_KEY="your_deepseek_api_key"
 
 也可以在自己的 shell 配置、进程管理器或本地 `.env` 工作流中注入该变量。`.env` 文件默认不会提交到 Git。
 
+也可以不使用默认 DeepSeek 环境变量，直接在页面右上角点击“模型设置”，添加自己的大模型 API。当前内置预设包括：
+
+- DeepSeek
+- OpenAI
+- Anthropic Claude
+- Google Gemini
+- 阿里通义千问 Qwen
+- Moonshot Kimi
+- 智谱 GLM
+- 火山方舟 Doubao
+- SiliconFlow
+- OpenRouter
+- 自定义 OpenAI 兼容接口
+
+启用“使用我自己的大模型 API 进行推演”后，必须点击“测试模型”并测试通过，页面才允许用该模型运行逐步推理或多智能体模拟。API Key 只保存在当前浏览器的 `localStorage` 中，不会写入项目文件，也不会被 Git 提交。
+
 ## 启动方式
 
 在项目根目录执行：
@@ -235,9 +251,18 @@ POST /api/reason
   "question": "超导量子能否实现容错？",
   "mode": "reasoning",
   "max_nodes": 80,
-  "lang": "zh"
+  "lang": "zh",
+  "model_config": {
+    "provider": "openai",
+    "api_kind": "openai",
+    "model": "gpt-4.1",
+    "base_url": "https://api.openai.com/v1",
+    "api_key": "your_api_key"
+  }
 }
 ```
+
+`model_config` 可省略。省略时后端使用 `DEEPSEEK_API_KEY` 环境变量和默认模型配置。
 
 ### 多智能体模拟
 
@@ -246,6 +271,32 @@ POST /api/simulate
 ```
 
 返回 Server-Sent Events 流。
+
+### 大模型配置接口
+
+获取前端可用厂商预设：
+
+```http
+GET /api/models/providers
+```
+
+测试用户填写的大模型配置：
+
+```http
+POST /api/models/test
+```
+
+请求示例：
+
+```json
+{
+  "provider": "qwen",
+  "api_kind": "openai",
+  "model": "qwen-plus",
+  "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+  "api_key": "your_api_key"
+}
+```
 
 请求示例：
 

@@ -1,0 +1,13 @@
+file '/Users/avalok/work/QuanKnowledeg/heygen_promo/exports/frames/scene_01.png'
+duration 30
+file '/Users/avalok/work/QuanKnowledeg/heygen_promo/exports/frames/scene_02.png'
+duration 30
+file '/Users/avalok/work/QuanKnowledeg/heygen_promo/exports/frames/scene_03.png'
+duration 30
+file '/Users/avalok/work/QuanKnowledeg/heygen_promo/exports/frames/scene_04.png'
+duration 30
+file '/Users/avalok/work/QuanKnowledeg/heygen_promo/exports/frames/scene_05.png'
+duration 30
+file '/Users/avalok/work/QuanKnowledeg/heygen_promo/exports/frames/scene_06.png'
+duration 30
+file '/Users/avalok/work/QuanKnowledeg/heygen_promo/exports/frames/scene_06.png'

@@ -1,0 +1,44 @@
+[
+  {
+    "scene": 1,
+    "time": "00:00-00:34",
+    "asset": "assets/01_3d_research_globe.png",
+    "visual": "3D quantum research globe, slow zoom in, presenter in lower-left circular PIP.",
+    "narration": "Opening and product positioning."
+  },
+  {
+    "scene": 2,
+    "time": "00:34-01:22",
+    "asset": "assets/01_3d_research_globe.png",
+    "visual": "Highlight nodes, sources, evidence, difficulty, and research evolution paths.",
+    "narration": "Explain 3D nodes, satellites, sources, evidence, and attack paths as research paths."
+  },
+  {
+    "scene": 3,
+    "time": "01:22-01:44",
+    "asset": "assets/04_2d_knowledge_graph.png",
+    "visual": "2D knowledge graph view with search and filters.",
+    "narration": "Explain 2D mode and preserved reasoning engine."
+  },
+  {
+    "scene": 4,
+    "time": "01:44-02:42",
+    "asset": "assets/03_multi_agent_simulation_mock.png",
+    "visual": "Multi-agent reasoning process with agents, rounds, summaries, prediction report.",
+    "narration": "Explain step-by-step reasoning and multi-agent simulation."
+  },
+  {
+    "scene": 5,
+    "time": "02:42-03:28",
+    "asset": "assets/02_model_settings.png",
+    "visual": "Model settings panel plus references/report export flow.",
+    "narration": "Explain related literature list, exports, and bring-your-own-model settings."
+  },
+  {
+    "scene": 6,
+    "time": "03:28-03:46",
+    "asset": "assets/01_3d_research_globe.png",
+    "visual": "Return to 3D globe, product name, call to action.",
+    "narration": "Closing call to action."
+  }
+]

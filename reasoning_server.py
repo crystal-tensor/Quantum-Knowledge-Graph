@@ -15,6 +15,7 @@ import re
 import os
 import time
 import tempfile
+from contextvars import ContextVar
 from typing import List, Dict, Any, Tuple, Optional
 from collections import defaultdict, Counter
 from fastapi import FastAPI, HTTPException
@@ -31,6 +32,55 @@ DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 DEEPSEEK_MODEL = "deepseek-v4-pro"
 DEFAULT_PORT = 6123
+ACTIVE_MODEL_CONFIG: ContextVar[Optional[Dict[str, Any]]] = ContextVar("ACTIVE_MODEL_CONFIG", default=None)
+
+MODEL_PROVIDER_PRESETS = [
+    {
+        "id": "deepseek", "label": "DeepSeek", "api_kind": "openai",
+        "base_url": "https://api.deepseek.com/v1", "models": ["deepseek-chat", "deepseek-reasoner", "deepseek-v4-pro"]
+    },
+    {
+        "id": "openai", "label": "OpenAI", "api_kind": "openai",
+        "base_url": "https://api.openai.com/v1", "models": ["gpt-4.1", "gpt-4.1-mini", "gpt-4o", "o3"]
+    },
+    {
+        "id": "anthropic", "label": "Anthropic Claude", "api_kind": "anthropic",
+        "base_url": "https://api.anthropic.com/v1", "models": ["claude-3-5-sonnet-latest", "claude-3-5-haiku-latest", "claude-3-opus-latest"]
+    },
+    {
+        "id": "gemini", "label": "Google Gemini", "api_kind": "gemini",
+        "base_url": "https://generativelanguage.googleapis.com/v1beta", "models": ["gemini-1.5-pro", "gemini-1.5-flash", "gemini-2.0-flash"]
+    },
+    {
+        "id": "qwen", "label": "阿里通义千问 Qwen", "api_kind": "openai",
+        "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1", "models": ["qwen-plus", "qwen-max", "qwen-turbo"]
+    },
+    {
+        "id": "kimi", "label": "Moonshot Kimi", "api_kind": "openai",
+        "base_url": "https://api.moonshot.cn/v1", "models": ["moonshot-v1-8k", "moonshot-v1-32k", "moonshot-v1-128k"]
+    },
+    {
+        "id": "zhipu", "label": "智谱 GLM", "api_kind": "openai",
+        "base_url": "https://open.bigmodel.cn/api/paas/v4", "models": ["glm-4-plus", "glm-4-flash", "glm-4-air"]
+    },
+    {
+        "id": "doubao", "label": "火山方舟 Doubao", "api_kind": "openai",
+        "base_url": "https://ark.cn-beijing.volces.com/api/v3", "models": ["doubao-pro-32k", "doubao-lite-32k"]
+    },
+    {
+        "id": "siliconflow", "label": "SiliconFlow", "api_kind": "openai",
+        "base_url": "https://api.siliconflow.cn/v1", "models": ["deepseek-ai/DeepSeek-V3", "Qwen/Qwen2.5-72B-Instruct", "THUDM/glm-4-9b-chat"]
+    },
+    {
+        "id": "openrouter", "label": "OpenRouter", "api_kind": "openai",
+        "base_url": "https://openrouter.ai/api/v1", "models": ["openai/gpt-4o", "anthropic/claude-3.5-sonnet", "google/gemini-pro-1.5"]
+    },
+    {
+        "id": "custom", "label": "自定义 OpenAI 兼容接口", "api_kind": "openai",
+        "base_url": "", "models": []
+    },
+]
+MODEL_PROVIDER_BY_ID = {p["id"]: p for p in MODEL_PROVIDER_PRESETS}
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 GRAPH_DATA_PATH = os.path.join(BASE_DIR, "graph_data.json")
@@ -283,32 +333,160 @@ async def safe_sse_stream(generator, context: str):
 
 
 # ============================================================
-# DeepSeek API 调用
+# 大模型 API 调用
 # ============================================================
 
-async def call_deepseek_stream(messages, temperature=0.7, max_tokens=4096):
-    """流式调用 DeepSeek API，yield SSE 格式字符串。"""
+def normalize_model_config(config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """合并用户模型配置与默认 DeepSeek 配置。"""
+    config = config or ACTIVE_MODEL_CONFIG.get() or {}
+    provider = (config.get("provider") or "deepseek").strip()
+    preset = MODEL_PROVIDER_BY_ID.get(provider, MODEL_PROVIDER_BY_ID["deepseek"])
+    api_kind = (config.get("api_kind") or preset.get("api_kind") or "openai").strip()
+    model = (config.get("model") or (preset.get("models") or [DEEPSEEK_MODEL])[0] or DEEPSEEK_MODEL).strip()
+    base_url = (config.get("base_url") or preset.get("base_url") or DEEPSEEK_BASE_URL).strip().rstrip("/")
+    api_key = (config.get("api_key") or (DEEPSEEK_API_KEY if provider == "deepseek" else "")).strip()
+
+    return {
+        "provider": provider,
+        "provider_label": preset.get("label", provider),
+        "api_kind": api_kind,
+        "model": model,
+        "base_url": base_url,
+        "api_key": api_key,
+    }
+
+
+def require_model_config(config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    resolved = normalize_model_config(config)
+    missing = []
+    if not resolved["api_key"]:
+        missing.append("api_key")
+    if not resolved["model"]:
+        missing.append("model")
+    if resolved["api_kind"] != "gemini" and not resolved["base_url"]:
+        missing.append("base_url")
+    if missing:
+        raise HTTPException(status_code=400, detail=f"模型配置不完整，缺少: {', '.join(missing)}")
+    return resolved
+
+
+def openai_chat_url(base_url: str) -> str:
+    base = (base_url or "").rstrip("/")
+    if base.endswith("/chat/completions"):
+        return base
+    return f"{base}/chat/completions"
+
+
+def split_system_messages(messages: List[Dict[str, str]]) -> Tuple[str, List[Dict[str, str]]]:
+    system_parts = []
+    regular_messages = []
+    for msg in messages:
+        role = msg.get("role", "user")
+        content = msg.get("content", "")
+        if role == "system":
+            system_parts.append(content)
+        else:
+            regular_messages.append({"role": role if role in {"user", "assistant"} else "user", "content": content})
+    return "\n\n".join(system_parts).strip(), regular_messages
+
+
+async def call_openai_compatible(config: Dict[str, Any], messages, temperature=0.7, max_tokens=4096, stream=False):
     headers = {
-        "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+        "Authorization": f"Bearer {config['api_key']}",
         "Content-Type": "application/json"
     }
     payload = {
-        "model": DEEPSEEK_MODEL,
+        "model": config["model"],
         "messages": messages,
         "temperature": temperature,
         "max_tokens": max_tokens,
-        "stream": True
+        "stream": stream
     }
 
+    client_timeout = httpx.Timeout(connect=30.0, read=120.0, write=30.0, pool=30.0)
+    client = httpx.AsyncClient(timeout=client_timeout, proxy=None)
+    return client, "POST", openai_chat_url(config["base_url"]), headers, payload
+
+
+async def call_anthropic(config: Dict[str, Any], messages, temperature=0.7, max_tokens=4096) -> str:
+    system, regular_messages = split_system_messages(messages)
+    payload = {
+        "model": config["model"],
+        "messages": regular_messages or [{"role": "user", "content": "Hello"}],
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+    }
+    if system:
+        payload["system"] = system
+    headers = {
+        "x-api-key": config["api_key"],
+        "anthropic-version": "2023-06-01",
+        "Content-Type": "application/json"
+    }
+    async with httpx.AsyncClient(timeout=httpx.Timeout(connect=30.0, read=120.0, write=30.0, pool=30.0), proxy=None) as client:
+        response = await client.post(f"{config['base_url'].rstrip('/')}/messages", headers=headers, json=payload)
+        if response.status_code != 200:
+            raise HTTPException(status_code=response.status_code, detail=f"{config['provider_label']} API错误: {response.text[:500]}")
+        data = response.json()
+        return "".join(part.get("text", "") for part in data.get("content", []) if part.get("type") == "text").strip()
+
+
+async def call_gemini(config: Dict[str, Any], messages, temperature=0.7, max_tokens=4096) -> str:
+    system, regular_messages = split_system_messages(messages)
+    contents = []
+    if system:
+        contents.append({"role": "user", "parts": [{"text": f"System instructions:\n{system}"}]})
+    for msg in regular_messages:
+        role = "model" if msg.get("role") == "assistant" else "user"
+        contents.append({"role": role, "parts": [{"text": msg.get("content", "")}]})
+    payload = {
+        "contents": contents or [{"role": "user", "parts": [{"text": "Hello"}]}],
+        "generationConfig": {
+            "temperature": temperature,
+            "maxOutputTokens": max_tokens
+        }
+    }
+    url = f"{config['base_url'].rstrip('/')}/models/{config['model']}:generateContent?key={config['api_key']}"
+    async with httpx.AsyncClient(timeout=httpx.Timeout(connect=30.0, read=120.0, write=30.0, pool=30.0), proxy=None) as client:
+        response = await client.post(url, json=payload)
+        if response.status_code != 200:
+            raise HTTPException(status_code=response.status_code, detail=f"{config['provider_label']} API错误: {response.text[:500]}")
+        data = response.json()
+        parts = data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
+        return "".join(part.get("text", "") for part in parts).strip()
+
+
+async def call_deepseek_stream(messages, temperature=0.7, max_tokens=4096):
+    """流式调用当前配置的大模型，yield SSE 格式字符串。"""
     try:
-        # 禁用代理，直连DeepSeek API（避免走系统代理导致连接失败）
-        async with httpx.AsyncClient(
-            timeout=httpx.Timeout(connect=30.0, read=120.0, write=30.0, pool=30.0),
-            proxy=None
-        ) as client:
+        config = require_model_config()
+    except HTTPException as e:
+        msg = json.dumps({"type": "error", "message": "模型配置错误", "detail": e.detail}, ensure_ascii=False)
+        yield f"data: {msg}\n\n"
+        return
+
+    if config["api_kind"] in {"anthropic", "gemini"}:
+        try:
+            if config["api_kind"] == "anthropic":
+                content = await call_anthropic(config, messages, temperature, max_tokens)
+            else:
+                content = await call_gemini(config, messages, temperature, max_tokens)
+            msg = json.dumps({"type": "content", "content": content}, ensure_ascii=False)
+            yield f"data: {msg}\n\n"
+        except HTTPException as e:
+            msg = json.dumps({"type": "error", "message": f"API错误: {e.status_code}", "detail": e.detail}, ensure_ascii=False)
+            yield f"data: {msg}\n\n"
+        except Exception as e:
+            msg = json.dumps({"type": "error", "message": "模型调用异常", "detail": str(e)}, ensure_ascii=False)
+            yield f"data: {msg}\n\n"
+        return
+
+    try:
+        client, method, url, headers, payload = await call_openai_compatible(config, messages, temperature, max_tokens, stream=True)
+        async with client:
             async with client.stream(
-                "POST",
-                f"{DEEPSEEK_BASE_URL}/v1/chat/completions",
+                method,
+                url,
                 headers=headers,
                 json=payload
             ) as response:
@@ -349,33 +527,31 @@ async def call_deepseek_stream(messages, temperature=0.7, max_tokens=4096):
 
 
 async def call_deepseek(messages, temperature=0.7, max_tokens=4096) -> str:
-    """非流式调用 DeepSeek API，返回完整响应文本。"""
-    headers = {
-        "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
-        "Content-Type": "application/json"
-    }
-    payload = {
-        "model": DEEPSEEK_MODEL,
-        "messages": messages,
-        "temperature": temperature,
-        "max_tokens": max_tokens,
-        "stream": False
-    }
+    """非流式调用当前配置的大模型，返回完整响应文本。"""
+    config = require_model_config()
+    if config["api_kind"] == "anthropic":
+        return await call_anthropic(config, messages, temperature, max_tokens)
+    if config["api_kind"] == "gemini":
+        return await call_gemini(config, messages, temperature, max_tokens)
 
-    async with httpx.AsyncClient(
-        timeout=httpx.Timeout(connect=30.0, read=120.0, write=30.0, pool=30.0),
-        proxy=None
-    ) as client:
-        response = await client.post(
-            f"{DEEPSEEK_BASE_URL}/v1/chat/completions",
-            headers=headers,
-            json=payload
-        )
+    client, method, url, headers, payload = await call_openai_compatible(config, messages, temperature, max_tokens, stream=False)
+    async with client:
+        response = await client.request(method, url, headers=headers, json=payload)
         if response.status_code != 200:
             error_text = response.text[:500]
-            raise HTTPException(status_code=response.status_code, detail=f"DeepSeek API错误: {error_text}")
+            raise HTTPException(status_code=response.status_code, detail=f"{config['provider_label']} API错误: {error_text}")
         data = response.json()
         return data["choices"][0]["message"]["content"]
+
+
+async def stream_with_model_config(generator, model_config: Optional[Dict[str, Any]], context: str):
+    """为一次 SSE 请求绑定用户选择的大模型配置。"""
+    token = ACTIVE_MODEL_CONFIG.set(model_config or None)
+    try:
+        async for chunk in safe_sse_stream(generator, context):
+            yield chunk
+    finally:
+        ACTIVE_MODEL_CONFIG.reset(token)
 
 
 # ============================================================
@@ -1426,11 +1602,20 @@ class ReasonRequest(BaseModel):
     max_nodes: int = 80
     rounds: int = 3
     lang: str = "zh"  # 'zh' or 'en' - 自动检测的问题语言
+    llm_config: Optional[Dict[str, Any]] = Field(default=None, alias="model_config")
 
 
 class SubgraphRequest(BaseModel):
     question: str
     max_nodes: int = 50
+
+
+class ModelTestRequest(BaseModel):
+    provider: str
+    api_kind: str = "openai"
+    model: str
+    base_url: str = ""
+    api_key: str
 
 
 # ============================================================
@@ -1485,6 +1670,40 @@ async def get_stats():
     }
 
 
+@app.get("/api/models/providers")
+async def get_model_providers():
+    """返回前端可选的大模型厂商预设。"""
+    return {"providers": MODEL_PROVIDER_PRESETS}
+
+
+@app.post("/api/models/test")
+async def test_model(req: ModelTestRequest):
+    """测试用户模型配置，测试通过后前端才允许用于推演。"""
+    raw_config = req.model_dump() if hasattr(req, "model_dump") else req.dict()
+    config = require_model_config(raw_config)
+    test_messages = [
+        {"role": "system", "content": "You are a connection test assistant. Reply only with OK."},
+        {"role": "user", "content": "Reply OK if this model connection works."}
+    ]
+    token = ACTIVE_MODEL_CONFIG.set(config)
+    started = time.time()
+    try:
+        result = await call_deepseek(test_messages, temperature=0, max_tokens=32)
+    finally:
+        ACTIVE_MODEL_CONFIG.reset(token)
+
+    if not result or not result.strip():
+        raise HTTPException(status_code=502, detail="模型没有返回有效内容")
+    return {
+        "ok": True,
+        "provider": config["provider"],
+        "provider_label": config["provider_label"],
+        "model": config["model"],
+        "latency_ms": int((time.time() - started) * 1000),
+        "sample": result.strip()[:120]
+    }
+
+
 @app.post("/api/subgraph")
 async def get_relevant_subgraph(req: SubgraphRequest):
     """获取与问题相关的子图"""
@@ -1520,7 +1739,7 @@ async def reason(req: ReasonRequest):
         raise HTTPException(status_code=503, detail="图谱数据未加载")
 
     return StreamingResponse(
-        safe_sse_stream(reasoning_mode(req.question, max_nodes=req.max_nodes, lang=req.lang), "reason"),
+        stream_with_model_config(reasoning_mode(req.question, max_nodes=req.max_nodes, lang=req.lang), req.llm_config, "reason"),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"}
     )
@@ -1533,7 +1752,7 @@ async def simulate(req: ReasonRequest):
         raise HTTPException(status_code=503, detail="图谱数据未加载")
 
     return StreamingResponse(
-        safe_sse_stream(simulation_mode(req.question, rounds=req.rounds, max_nodes=req.max_nodes, lang=req.lang), "simulate"),
+        stream_with_model_config(simulation_mode(req.question, rounds=req.rounds, max_nodes=req.max_nodes, lang=req.lang), req.llm_config, "simulate"),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"}
     )
@@ -1571,6 +1790,8 @@ async def health_check():
         "graph_loaded": len(GRAPH_DATA.get("nodes", [])) > 0,
         "node_count": len(GRAPH_DATA.get("nodes", [])),
         "edge_count": len(GRAPH_DATA.get("edges", []))
+        ,
+        "default_model_ready": bool(DEEPSEEK_API_KEY)
     }
 
 
