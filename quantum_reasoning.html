@@ -886,6 +886,7 @@ let isPaidUser = true;
 
 // 闪烁节点管理
 const flashingNodes = new Map(); // nodeId -> { startTime, duration, color }
+const recentFlashKeys = new Map(); // avoid over-triggering the same graph pulse
 
 // ============================================================
 // 3D 场景
@@ -1630,19 +1631,27 @@ function translateDescription(text) {
 // ============================================================
 // 推演闪烁联动效果
 // ============================================================
+function resolveGraphNodeId(nodeId) {
+  if (!nodeId) return '';
+  if (nodeIdToMesh[nodeId]) return nodeId;
+  const renderId = researchRenderIdByOriginalId[nodeId];
+  return renderId && nodeIdToMesh[renderId] ? renderId : '';
+}
+
 function flashNode(nodeId, duration = 3000) {
-  if (!nodeIdToMesh[nodeId]) return;
-  flashingNodes.set(nodeId, {
+  const resolvedId = resolveGraphNodeId(nodeId);
+  if (!resolvedId) return;
+  flashingNodes.set(resolvedId, {
     startTime: performance.now(),
     duration: duration,
-    color: nodeIdToMesh[nodeId].userData.color || 0x60A5FA
+    color: nodeIdToMesh[resolvedId].userData.color || 0x60A5FA
   });
   // 立即高亮节点
-  nodeIdToMesh[nodeId].material.emissiveIntensity = 3.0;
-  nodeIdToMesh[nodeId].scale.set(1.8,1.8,1.8);
+  nodeIdToMesh[resolvedId].material.emissiveIntensity = 3.0;
+  nodeIdToMesh[resolvedId].scale.set(1.8,1.8,1.8);
 
   // 添加发光环效果
-  const mesh = nodeIdToMesh[nodeId];
+  const mesh = nodeIdToMesh[resolvedId];
   const ringGeo = new THREE.RingGeometry(0.06, 0.1, 32);
   const ringMat = new THREE.MeshBasicMaterial({
     color: mesh.userData.color || 0x60A5FA,
@@ -1656,21 +1665,117 @@ function flashNode(nodeId, duration = 3000) {
 }
 
 function flashEdge(sourceId, targetId, duration = 3000) {
-  const sM = nodeIdToMesh[sourceId], tM = nodeIdToMesh[targetId];
+  const resolvedSource = resolveGraphNodeId(sourceId);
+  const resolvedTarget = resolveGraphNodeId(targetId);
+  const sM = nodeIdToMesh[resolvedSource], tM = nodeIdToMesh[resolvedTarget];
   if (!sM || !tM) return;
-  // 画一条金色高亮边到flashGroup
-  drawEdge(sM.position, tM.position, 0xFFD700, 0.9, flashGroup, true);
-  // 设置超时移除
-  const edgeIdx = flashGroup.children.length - 1;
-  setTimeout(() => {
-    if (flashGroup.children.length > edgeIdx && flashGroup.children[edgeIdx]) {
-      flashGroup.remove(flashGroup.children[edgeIdx]);
+  const startIndex = flashGroup.children.length;
+  drawEdge(sM.position, tM.position, 0xFFD700, 0.95, flashGroup, true);
+  const now = performance.now();
+  flashGroup.children.slice(startIndex).forEach(child => {
+    child.userData = {
+      ...(child.userData || {}),
+      flashEdge: true,
+      startTime: now,
+      duration,
+      baseOpacity: child.material?.opacity || 0.9
+    };
+  });
+}
+
+function normalizeNodeToken(label = '') {
+  return String(label).replace(/[（(].*?[）)]/g, '').trim();
+}
+
+function pushUnique(list, value, max = 36) {
+  if (!value || list.includes(value) || list.length >= max) return;
+  list.push(value);
+}
+
+function collectTextMatchedNodeIds(text = '', maxNodes = 10) {
+  const ids = [];
+  if (!text || !GRAPH_DATA?.nodes) return ids;
+  const haystack = String(text);
+  const genericTerms = new Set(['量子', '计算', '技术', '系统', '公司', '研究', '路线', '平台', 'Quantum', 'Computing', 'System', 'Technology']);
+  for (const node of GRAPH_DATA.nodes) {
+    if (!node?.id || !nodeIdToMesh[node.id]) continue;
+    const label = node.label || '';
+    const base = normalizeNodeToken(label);
+    const terms = [label, base, ...(node.properties?.related_terms || [])]
+      .map(term => String(term || '').trim())
+      .filter(term => term.length >= 2 && !genericTerms.has(term));
+    if (terms.some(term => haystack.includes(term))) {
+      pushUnique(ids, node.id, maxNodes);
     }
-  }, duration);
+    if (ids.length >= maxNodes) break;
+  }
+  return ids;
+}
+
+function collectEventNodeIds(event = {}, text = '', maxNodes = 36) {
+  const ids = [];
+  const add = id => pushUnique(ids, id, maxNodes);
+  (event.node_ids || event.nodeIds || []).forEach(add);
+  (event.evidence || []).forEach(add);
+  (event.subgraph?.seed_nodes || []).forEach(n => add(n.id));
+  (event.subgraph?.nodes || []).forEach(n => add(n.id));
+  if (event.entity_id) add(event.entity_id);
+  if (event.agent?.entity_id) add(event.agent.entity_id);
+  if (event.agent?.id) add(event.agent.id);
+  collectTextMatchedNodeIds(text || event.content || event.summary || event.conclusion || event.coordinator_summary || '', Math.min(maxNodes, 12)).forEach(add);
+  return ids;
+}
+
+function collectConnectedEdgePairs(nodeIds = [], maxPairs = 24) {
+  const pairs = [];
+  const idSet = new Set(nodeIds);
+  if (!idSet.size || !GRAPH_DATA?.edges) return pairs;
+  const addPair = (source, target) => {
+    if (!source || !target) return;
+    const key = `${source}->${target}`;
+    if (pairs.some(p => `${p[0]}->${p[1]}` === key) || pairs.length >= maxPairs) return;
+    pairs.push([source, target]);
+  };
+  GRAPH_DATA.edges.forEach(e => {
+    if (idSet.has(e.source) && idSet.has(e.target)) addPair(e.source, e.target);
+  });
+  if (pairs.length < Math.min(8, maxPairs)) {
+    GRAPH_DATA.edges.forEach(e => {
+      if (idSet.has(e.source) || idSet.has(e.target)) addPair(e.source, e.target);
+    });
+  }
+  return pairs;
+}
+
+function flashKnowledgeSubgraph(event = {}, options = {}) {
+  const duration = options.duration || 3600;
+  const text = options.text || event.content || event.summary || event.conclusion || event.coordinator_summary || '';
+  const nodeIds = collectEventNodeIds(event, text, options.maxNodes || 36);
+  const edgePairs = [
+    ...(event.edge_pairs || event.edgePairs || []),
+    ...collectConnectedEdgePairs(nodeIds, options.maxEdges || 24)
+  ];
+  if (!nodeIds.length && !edgePairs.length) return;
+
+  const signature = `${nodeIds.slice(0, 10).join(',')}|${edgePairs.slice(0, 10).map(p => p.join('>')).join(',')}`;
+  const now = performance.now();
+  if (signature && recentFlashKeys.has(signature) && now - recentFlashKeys.get(signature) < 900) return;
+  recentFlashKeys.set(signature, now);
+  if (recentFlashKeys.size > 120) {
+    [...recentFlashKeys.keys()].slice(0, 40).forEach(key => recentFlashKeys.delete(key));
+  }
+
+  nodeIds.forEach((id, idx) => {
+    setTimeout(() => flashNode(id, duration), Math.min(idx * 70, 900));
+  });
+  edgePairs.slice(0, options.maxEdges || 24).forEach((pair, idx) => {
+    setTimeout(() => flashEdge(pair[0], pair[1], duration), Math.min(idx * 60, 900));
+  });
 }
 
 function clearAllFlashes() {
   flashingNodes.clear();
+  recentFlashKeys.clear();
   flashGroup.clear();
   // 重置所有节点
   Object.values(nodeIdToMesh).forEach(m => {
@@ -1680,6 +1785,11 @@ function clearAllFlashes() {
   highlightGroup.clear();
   selectedNodeId = null;
 }
+
+window.flashNode = flashNode;
+window.flashEdge = flashEdge;
+window.flashKnowledgeSubgraph = flashKnowledgeSubgraph;
+window.clearAllFlashes = clearAllFlashes;
 
 function showTooltip(e, name, type) {
   const tt = document.getElementById('tooltip');
@@ -1761,6 +1871,16 @@ function animate() {
         child.scale.set(scale, scale, scale);
         child.material.opacity = 0.8 * (1 - progress);
         child.lookAt(camera.position);
+      }
+    } else if (child.userData && child.userData.flashEdge) {
+      const elapsed = now - child.userData.startTime;
+      const duration = child.userData.duration;
+      if (elapsed > duration) {
+        expiredRings.push(i);
+      } else if (child.material) {
+        const progress = elapsed / duration;
+        const pulse = 0.45 + 0.55 * Math.sin((elapsed % 520) / 520 * Math.PI * 2);
+        child.material.opacity = Math.max(0, child.userData.baseOpacity * pulse * (1 - progress * 0.55));
       }
     }
   });
@@ -2228,16 +2348,7 @@ function handleEvent(event, question) {
         break;
       }
     }
-    // 检测内容中是否包含节点名称，触发闪烁
-    if (event.content && GRAPH_DATA) {
-      for (const node of GRAPH_DATA.nodes) {
-        if (event.content.includes(node.label) && nodeIdToMesh[node.id]) {
-          // 短暂闪烁该节点（2秒）
-          flashNode(node.id, 2000);
-          break; // 每段内容只闪烁一个节点，避免过于频繁
-        }
-      }
-    }
+    flashKnowledgeSubgraph(event, { duration: 2200, maxNodes: 5, maxEdges: 8 });
     return;
   }
 
@@ -2254,11 +2365,7 @@ function handleEvent(event, question) {
 
   // === 节点高亮事件（推演联动） ===
   if (eventType === 'highlight_nodes') {
-    const nodeIds = event.node_ids || [];
-    nodeIds.forEach(nid => flashNode(nid, 4000));
-    // 也高亮相关的边
-    const edgePairs = event.edge_pairs || [];
-    edgePairs.forEach(pair => flashEdge(pair[0], pair[1], 4000));
+    flashKnowledgeSubgraph(event, { duration: 4800, maxNodes: 40, maxEdges: 36 });
     return;
   }
 
@@ -2281,6 +2388,7 @@ function handleEvent(event, question) {
       if (placeholder) placeholder.remove();
       el.innerHTML += formatContent(event.content);
       if (reasoningSteps.length > 0) reasoningSteps[reasoningSteps.length-1].content += event.content;
+      flashKnowledgeSubgraph(event, { duration: 2400, maxNodes: 8, maxEdges: 10 });
       scrollToBottom();
     }
   }
@@ -2292,10 +2400,7 @@ function handleEvent(event, question) {
     predictionResult = event;
     syncLatestRunState();
     completePhaseIndicators();
-    // Highlight relevant nodes on 3D globe
-    if (event.subgraph && event.subgraph.seed_nodes) {
-      event.subgraph.seed_nodes.forEach(sn => flashNode(sn.id, 5000));
-    }
+    flashKnowledgeSubgraph(event, { duration: 6500, maxNodes: 42, maxEdges: 42 });
     if (currentMode === 'reasoning') {
       renderIMAReferencesFromCurrentReasoning(question);
       addHTML(`<div class="phase-indicator completed"><div class="spinner"></div>${questionLang === 'en' ? 'Reasoning completed' : '推理完成'}</div>`);
@@ -2357,10 +2462,7 @@ function handleEvent(event, question) {
     </div>`);
     scrollToBottom();
 
-    // Highlight on globe
-    if (a.id && nodeIdToMesh[a.id]) {
-      flashNode(a.id, 4000);
-    }
+    flashKnowledgeSubgraph({ agent: a, content: `${a.name || ''}\n${a.role || ''}\n${a.expertise || ''}` }, { duration: 4200, maxNodes: 8, maxEdges: 8 });
   }
   else if (eventType === 'round_start') {
     const roundLabel = questionLang === 'en' ? `💬 Round ${event.round} Discussion` : `💬 第 ${event.round} 轮讨论`;
@@ -2395,10 +2497,7 @@ function handleEvent(event, question) {
     }
     syncLatestRunState();
 
-    // Highlight on globe
-    if (a.entity_id && nodeIdToMesh[a.entity_id]) {
-      flashNode(a.entity_id, 3000);
-    }
+    flashKnowledgeSubgraph(a, { duration: 3600, maxNodes: 10, maxEdges: 12 });
   }
   else if (eventType === 'round_summary') {
     const label = questionLang === 'en' ? `📋 Round ${event.round} Summary:` : `📋 第${event.round}轮摘要：`;
@@ -2409,6 +2508,7 @@ function handleEvent(event, question) {
     scrollToBottom();
     if (rnd) { rnd.summary = summary || ''; }
     syncLatestRunState();
+    flashKnowledgeSubgraph({ summary }, { duration: 3600, maxNodes: 10, maxEdges: 14 });
   }
   else if (eventType === 'coordinator_summary') {
     const label = questionLang === 'en' ? '🎯 Coordinator Summary:' : '🎯 协调者总结：';
@@ -2417,6 +2517,7 @@ function handleEvent(event, question) {
     // 收集协调者总结
     simulationData.coordinatorSummary = event.content || '';
     syncLatestRunState();
+    flashKnowledgeSubgraph(event, { duration: 4200, maxNodes: 14, maxEdges: 18 });
   }
   // 模拟模式最终完成
   else if (eventType === 'phase' && event.phase === 'complete') {
@@ -2425,6 +2526,7 @@ function handleEvent(event, question) {
   else if (eventType === 'prediction') {
     predictionResult = event;
     syncLatestRunState();
+    flashKnowledgeSubgraph(event, { duration: 6500, maxNodes: 42, maxEdges: 42 });
     // 标记当前活动的phase indicator为完成状态
     if (lastPhaseEl) {
       lastPhaseEl.classList.add('completed');
@@ -3383,7 +3485,7 @@ inputEl.onkeydown = (e) => {
               <div class="step-header"><div class="step-number">${event.step}</div><div class="step-title">${esc(event.title)}</div></div>
               <div class="step-body" id="fallback-step-body-${event.step}">${event.step > 0 ? '<span class="stream-placeholder">正在等待模型返回...</span>' : ''}</div>
             </div>`);
-          } else if (event.type === 'step_content' || event.type === 'content') {
+	      } else if (event.type === 'step_content' || event.type === 'content') {
             const step = event.step ?? currentStep;
             const el = document.getElementById(`fallback-step-body-${step}`);
             if (el) {
@@ -3391,10 +3493,13 @@ inputEl.onkeydown = (e) => {
               if (ph) ph.remove();
               el.innerHTML += fmt(event.content || '');
               const last = window.__fallbackReasoningSteps[window.__fallbackReasoningSteps.length - 1];
-              if (last) last.content += event.content || '';
-              contentEl.scrollTop = contentEl.scrollHeight;
-            }
-          } else if (event.type === 'phase') {
+	              if (last) last.content += event.content || '';
+	              flashKnowledgeSubgraph(event, { duration: 2400, maxNodes: 8, maxEdges: 10 });
+	              contentEl.scrollTop = contentEl.scrollHeight;
+	            }
+	          } else if (event.type === 'highlight_nodes') {
+	            flashKnowledgeSubgraph(event, { duration: 4800, maxNodes: 40, maxEdges: 36 });
+	          } else if (event.type === 'phase') {
             if (event.phase === 'complete') {
               completeFallbackPhases();
               add(`<div class="phase-indicator completed"><div class="spinner"></div>${esc(event.message || (lang === 'en' ? 'Multi-agent simulation completed' : '多智能体模拟完成'))}</div>`);
@@ -3402,11 +3507,12 @@ inputEl.onkeydown = (e) => {
               renderPhase(event.message || '');
             }
             window.__fallbackSimulationData.phaseMessages.push({phase:event.phase || '', message:event.message || ''});
-          } else if (event.type === 'agent_profile') {
-            const agent = event.agent || {};
-            window.__fallbackSimulationData.agents.push(agent);
-            window.__latestSimulationData = window.__fallbackSimulationData;
-            renderAgentProfile(agent);
+	          } else if (event.type === 'agent_profile') {
+	            const agent = event.agent || {};
+	            window.__fallbackSimulationData.agents.push(agent);
+	            window.__latestSimulationData = window.__fallbackSimulationData;
+	            renderAgentProfile(agent);
+	            flashKnowledgeSubgraph({ agent, content: `${agent.name || ''}\n${agent.role || ''}\n${agent.expertise || ''}` }, { duration: 4200, maxNodes: 8, maxEdges: 8 });
           } else if (event.type === 'round_start') {
             window.__fallbackSimulationData.rounds.push({round:event.round, speeches:[], summary:''});
             window.__latestSimulationData = window.__fallbackSimulationData;
@@ -3416,15 +3522,16 @@ inputEl.onkeydown = (e) => {
               ? `Generating speech for ${event.agent_name || ''}...`
               : `正在为 ${event.agent_name || ''} 生成发言...`;
             renderPhase(msg);
-          } else if (event.type === 'agent_speech') {
-            renderAgentSpeech(event);
+	          } else if (event.type === 'agent_speech') {
+	            renderAgentSpeech(event);
             const current = window.__fallbackSimulationData.rounds[window.__fallbackSimulationData.rounds.length - 1];
             if (current) current.speeches.push({
               agent_name:event.agent_name || '',
               agent_id:event.agent_id,
               content:event.content || ''
-            });
-            window.__latestSimulationData = window.__fallbackSimulationData;
+	            });
+	            window.__latestSimulationData = window.__fallbackSimulationData;
+	            flashKnowledgeSubgraph(event, { duration: 3600, maxNodes: 10, maxEdges: 12 });
           } else if (event.type === 'round_summarizing') {
             const msg = lang === 'en'
               ? `Summarizing Round ${event.round}...`
@@ -3433,21 +3540,24 @@ inputEl.onkeydown = (e) => {
           } else if (event.type === 'round_summary') {
             const round = window.__fallbackSimulationData.rounds.find(r => r.round === event.round);
             const summary = event.summary || summarizeRoundLocal(round, lang);
-            renderRoundSummary({...event, summary}, lang);
-            if (round) round.summary = summary || '';
-            window.__latestSimulationData = window.__fallbackSimulationData;
-          } else if (event.type === 'coordinator_summary') {
-            window.__fallbackSimulationData.coordinatorSummary = event.content || '';
-            window.__latestSimulationData = window.__fallbackSimulationData;
-            const label = lang === 'en' ? '🎯 Coordinator Summary:' : '🎯 协调者总结：';
-            add(`<div class="coordinator-box"><b>${label}</b><br>${fmt(event.content || '')}</div>`);
-          } else if (event.type === 'prediction') {
-            completeFallbackPhases();
-            window.__fallbackPredictionResult = event;
-            window.__latestPredictionResult = event;
-            window.__latestReasoningSteps = window.__fallbackReasoningSteps || [];
-            window.__latestSimulationData = window.__fallbackSimulationData;
-            if (mode === 'simulation') {
+	            renderRoundSummary({...event, summary}, lang);
+	            if (round) round.summary = summary || '';
+	            window.__latestSimulationData = window.__fallbackSimulationData;
+	            flashKnowledgeSubgraph({ summary }, { duration: 3600, maxNodes: 10, maxEdges: 14 });
+	          } else if (event.type === 'coordinator_summary') {
+	            window.__fallbackSimulationData.coordinatorSummary = event.content || '';
+	            window.__latestSimulationData = window.__fallbackSimulationData;
+	            const label = lang === 'en' ? '🎯 Coordinator Summary:' : '🎯 协调者总结：';
+	            add(`<div class="coordinator-box"><b>${label}</b><br>${fmt(event.content || '')}</div>`);
+	            flashKnowledgeSubgraph(event, { duration: 4200, maxNodes: 14, maxEdges: 18 });
+	          } else if (event.type === 'prediction') {
+	            completeFallbackPhases();
+	            window.__fallbackPredictionResult = event;
+	            window.__latestPredictionResult = event;
+	            window.__latestReasoningSteps = window.__fallbackReasoningSteps || [];
+	            window.__latestSimulationData = window.__fallbackSimulationData;
+	            flashKnowledgeSubgraph(event, { duration: 6500, maxNodes: 42, maxEdges: 42 });
+	            if (mode === 'simulation') {
               renderFinalPrediction(event, lang);
               renderSimulationDetailList(event, lang);
               renderReasoningLiteratureList(event, lang, question);
@@ -3456,10 +3566,11 @@ inputEl.onkeydown = (e) => {
             completeFallbackPhases();
             if (mode === 'simulation') {
               add(`<div class="phase-indicator completed"><div class="spinner"></div>${esc(event.message || (lang === 'en' ? 'Multi-agent simulation completed' : '多智能体模拟完成'))}</div>`);
-            } else {
-              window.__fallbackPredictionResult = event;
-              window.__latestPredictionResult = event;
-              renderReasoningLiteratureList(event, lang, question);
+	            } else {
+	              window.__fallbackPredictionResult = event;
+	              window.__latestPredictionResult = event;
+	              flashKnowledgeSubgraph(event, { duration: 6500, maxNodes: 42, maxEdges: 42 });
+	              renderReasoningLiteratureList(event, lang, question);
               add(`<div class="phase-indicator completed"><div class="spinner"></div>${esc(lang === 'en' ? 'Reasoning completed' : '推理完成')}</div>`);
             }
           } else if (event.type === 'error') {
