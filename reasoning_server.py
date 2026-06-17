@@ -31,7 +31,8 @@ import httpx
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 DEEPSEEK_MODEL = "deepseek-v4-pro"
-DEFAULT_PORT = 6123
+DEFAULT_HOST = os.environ.get("HOST", "0.0.0.0")
+DEFAULT_PORT = int(os.environ.get("PORT", "6122"))
 ACTIVE_MODEL_CONFIG: ContextVar[Optional[Dict[str, Any]]] = ContextVar("ACTIVE_MODEL_CONFIG", default=None)
 
 MODEL_PROVIDER_PRESETS = [
@@ -86,6 +87,22 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 GRAPH_DATA_PATH = os.path.join(BASE_DIR, "graph_data.json")
 HTML_FILE_PATH = os.path.join(BASE_DIR, "quantum_reasoning.html")
 DEFAULT_EXPORT_DIR = os.path.join(os.path.expanduser("~"), "Downloads")
+STATIC_MIME_TYPES = {
+    ".html": "text/html; charset=utf-8",
+    ".js": "text/javascript; charset=utf-8",
+    ".mjs": "text/javascript; charset=utf-8",
+    ".css": "text/css; charset=utf-8",
+    ".json": "application/json; charset=utf-8",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".svg": "image/svg+xml",
+    ".ico": "image/x-icon",
+    ".txt": "text/plain; charset=utf-8",
+    ".md": "text/markdown; charset=utf-8",
+    ".mp4": "video/mp4",
+    ".srt": "text/plain; charset=utf-8",
+}
 
 # ============================================================
 # 图谱数据加载
@@ -1633,7 +1650,7 @@ app.add_middleware(
 )
 
 
-@app.get("/")
+@app.api_route("/", methods=["GET", "HEAD"])
 async def serve_index():
     """服务主页面"""
     try:
@@ -1642,6 +1659,22 @@ async def serve_index():
         return HTMLResponse(content=content)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"前端文件不存在: {HTML_FILE_PATH}")
+
+
+def resolve_static_file(static_path: str) -> Tuple[str, str]:
+    """把前端静态文件安全地映射到项目目录。"""
+    requested = (static_path or "quantum_reasoning.html").lstrip("/")
+    if requested.startswith("api/"):
+        raise HTTPException(status_code=404, detail="API route not found")
+
+    full_path = os.path.abspath(os.path.join(BASE_DIR, requested))
+    if full_path != BASE_DIR and not full_path.startswith(BASE_DIR + os.sep):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    if not os.path.isfile(full_path):
+        raise HTTPException(status_code=404, detail=f"静态文件不存在: {requested}")
+
+    ext = os.path.splitext(full_path)[1].lower()
+    return full_path, STATIC_MIME_TYPES.get(ext, "application/octet-stream")
 
 
 @app.get("/api/stats")
@@ -1789,8 +1822,7 @@ async def health_check():
         "base_dir": BASE_DIR,
         "graph_loaded": len(GRAPH_DATA.get("nodes", [])) > 0,
         "node_count": len(GRAPH_DATA.get("nodes", [])),
-        "edge_count": len(GRAPH_DATA.get("edges", []))
-        ,
+        "edge_count": len(GRAPH_DATA.get("edges", [])),
         "default_model_ready": bool(DEEPSEEK_API_KEY)
     }
 
@@ -2026,6 +2058,11 @@ def build_report_html(req: ExportRequest) -> str:
             for a in agents_list:
                 stance_color = {"optimistic": "#34D399", "pessimistic": "#F87171", "neutral": "#60A5FA"}.get(a.get("stance", "neutral"), "#60A5FA")
                 stance_label = {"optimistic": ("乐观" if is_zh else "Optimistic"), "pessimistic": ("悲观" if is_zh else "Pessimistic"), "neutral": ("中立" if is_zh else "Neutral")}.get(a.get("stance", "neutral"), "中立" if is_zh else "Neutral")
+                persona_label = "人设" if is_zh else "Persona"
+                persona_html = (
+                    f'<div style="font-size:12px;color:#64748b;margin-top:4px"><b>{persona_label}:</b> {report_html_text(a.get("persona", ""))[:300]}</div>'
+                    if a.get("persona") else ""
+                )
                 agent_cards += f"""
             <div style="margin:10px 0;padding:14px;background:#f8fafc;border-radius:8px;border-left:4px solid {stance_color}">
               <div style="font-weight:700;font-size:15px;color:#1e293b">{report_html_text(a.get('name', ''))}</div>
@@ -2034,7 +2071,7 @@ def build_report_html(req: ExportRequest) -> str:
                 <span style="font-size:11px;background:{stance_color}22;color:{stance_color};padding:2px 8px;border-radius:4px">{stance_label}</span>
               </div>
               <div style="font-size:12px;color:#64748b;margin-top:4px"><b>{'专业领域' if is_zh else 'Expertise'}:</b> {report_html_text(a.get('expertise', ''))}</div>
-              {f'<div style="font-size:12px;color:#64748b;margin-top:4px"><b>{'人设' if is_zh else 'Persona'}:</b> {report_html_text(a.get('persona', ''))[:300]}</div>' if a.get('persona') else ''}
+              {persona_html}
             </div>"""
             simulation_html += f"""
         <div style="margin-bottom:20px;page-break-inside:avoid">
@@ -2115,6 +2152,28 @@ def build_report_html(req: ExportRequest) -> str:
     if not is_zh:
         mode_label = "Step-by-step Reasoning" if req.mode == "reasoning" else "Multi-Agent Simulation"
 
+    simulation_section_html = ""
+    if simulation_html:
+        simulation_title = "👥 多智能体推演过程" if is_zh else "👥 Multi-Agent Simulation Process"
+        simulation_section_html = f'<div class="section"><h2>{simulation_title}</h2>{simulation_html}</div>'
+
+    evidence_table_html = ""
+    if evidence_rows:
+        evidence_title = "支撑证据" if is_zh else "Supporting Evidence"
+        evidence_table_html = f"<table><tr><th>{evidence_title}</th></tr>{evidence_rows}</table>"
+
+    factors_table_html = ""
+    if factors_rows:
+        factors_title = "关键因素" if is_zh else "Key Factors"
+        factors_table_html = f"<table><tr><th>{factors_title}</th></tr>{factors_rows}</table>"
+
+    ima_section_html = ""
+    if ima_html:
+        ima_title = "相关文献列表" if is_zh else "Related Literature"
+        ima_section_html = f"<div class='section'><h2>📚 {ima_title}</h2>{ima_html}</div>"
+
+    conf_color = "#10b981" if conf_pct > 70 else "#f59e0b" if conf_pct > 40 else "#ef4444"
+
     html = f"""<!DOCTYPE html>
 <html lang="{'zh-CN' if is_zh else 'en'}">
 <head>
@@ -2150,7 +2209,7 @@ def build_report_html(req: ExportRequest) -> str:
   {steps_html}
 </div>
 
-{('<div class=\\"section\\"><h2>' + ('👥 多智能体推演过程' if is_zh else '👥 Multi-Agent Simulation Process') + '</h2>' + simulation_html + '</div>') if simulation_html else ''}
+	{simulation_section_html}
 
 <div class="section">
   <h2>{'🔮 预测结论' if is_zh else '🔮 Prediction Conclusion'}</h2>
@@ -2163,17 +2222,17 @@ def build_report_html(req: ExportRequest) -> str:
       <td style="width:120px;font-weight:600">{'置信度' if is_zh else 'Confidence'}</td>
       <td>
         <div style="display:flex;align-items:center;gap:10px">
-          <div class="conf-bar" style="flex:1"><div class="conf-fill" style="width:{conf_pct}%;background:{'#10b981' if conf_pct>70 else '#f59e0b' if conf_pct>40 else '#ef4444'}"></div></div>
+	          <div class="conf-bar" style="flex:1"><div class="conf-fill" style="width:{conf_pct}%;background:{conf_color}"></div></div>
           <span style="font-weight:700">{conf_pct}%</span>
         </div>
       </td>
     </tr>
   </table>
-  {"<table><tr><th>" + ('支撑证据' if is_zh else 'Supporting Evidence') + "</th></tr>" + evidence_rows + "</table>" if evidence_rows else ""}
-  {"<table><tr><th>" + ('关键因素' if is_zh else 'Key Factors') + "</th></tr>" + factors_rows + "</table>" if factors_rows else ""}
-</div>
-
-{"<div class='section'><h2>📚 " + ('相关文献列表' if is_zh else 'Related Literature') + f"</h2>{ima_html}</div>" if ima_html else ""}
+	  {evidence_table_html}
+	  {factors_table_html}
+	</div>
+	
+	{ima_section_html}
 
 <div style="margin-top:40px;padding-top:20px;border-top:1px solid #e2e8f0;color:#9ca3af;font-size:11px;text-align:center">
   {'本报告由量子知识图谱推演引擎自动生成' if is_zh else 'This report was auto-generated by Quantum Knowledge Graph Reasoning Engine'} | {date_str}
@@ -2530,6 +2589,13 @@ async def export_report(req: ExportRequest):
         raise HTTPException(status_code=500, detail=f"报告生成失败: {str(e)}")
 
 
+@app.api_route("/{static_path:path}", methods=["GET", "HEAD"])
+async def serve_static_file(static_path: str):
+    """在同一个 6122 端口上服务前端页面和静态资源。"""
+    file_path, media_type = resolve_static_file(static_path)
+    return FileResponse(file_path, media_type=media_type)
+
+
 # ============================================================
 # 启动入口
 # ============================================================
@@ -2537,7 +2603,8 @@ async def export_report(req: ExportRequest):
 if __name__ == "__main__":
     import uvicorn
     print("[启动] 量子知识图谱推演引擎")
+    print(f"[配置] 监听: {DEFAULT_HOST}:{DEFAULT_PORT}")
     print(f"[配置] 端口: {DEFAULT_PORT}")
     print(f"[配置] DeepSeek Model: {DEEPSEEK_MODEL}")
     print(f"[配置] Graph Data: {GRAPH_DATA_PATH}")
-    uvicorn.run(app, host="127.0.0.1", port=DEFAULT_PORT)
+    uvicorn.run(app, host=DEFAULT_HOST, port=DEFAULT_PORT)

@@ -4,8 +4,9 @@
 
 默认入口：
 
-- 前端页面：http://127.0.0.1:6122/quantum_reasoning.html
-- 后端 API：http://127.0.0.1:6123
+- 本地页面：http://127.0.0.1:6122/quantum_reasoning.html
+- 本地 API：http://127.0.0.1:6122/api
+- 云服务器入口：http://8.153.83.178:6122
 
 ## 核心能力
 
@@ -106,7 +107,7 @@ QuanKnowledeg/
 - macOS / Linux
 - Node.js 18+
 - Python 3.10+
-- 可访问本地端口 `6122` 和 `6123`
+- 可访问本地端口 `6122`
 
 Python 依赖主要包括：
 
@@ -159,10 +160,9 @@ npm run dev
 
 默认会：
 
-1. 检查 `http://127.0.0.1:6123/api/health` 是否已有当前项目后端。
-2. 如果没有后端，会启动 `python3 reasoning_server.py`。
-3. 启动前端静态服务，默认监听 `http://127.0.0.1:6122`。
-4. 如果 6122 被占用，会自动尝试下一个端口。
+1. 检查 `http://127.0.0.1:6122/api/health` 是否已有当前项目服务。
+2. 如果没有服务，会启动 `python3 reasoning_server.py`。
+3. 前端页面、静态图谱文件和 `/api/*` 接口都会由同一个 `6122` 端口提供。
 
 打开：
 
@@ -172,7 +172,7 @@ http://127.0.0.1:6122/quantum_reasoning.html
 
 ## 手动启动后端
 
-如果只想启动后端：
+如果只想启动统一服务：
 
 ```bash
 python3 reasoning_server.py
@@ -181,7 +181,7 @@ python3 reasoning_server.py
 健康检查：
 
 ```bash
-curl http://127.0.0.1:6123/api/health
+curl http://127.0.0.1:6122/api/health
 ```
 
 正常返回示例：
@@ -195,6 +195,28 @@ curl http://127.0.0.1:6123/api/health
   "edge_count": 1223
 }
 ```
+
+## 阿里云部署
+
+如果服务器只允许暴露 `6122`，直接让 FastAPI 监听 `0.0.0.0:6122`：
+
+```bash
+HOST=0.0.0.0 PORT=6122 python3 reasoning_server.py
+```
+
+也可以使用项目脚本：
+
+```bash
+HOST=0.0.0.0 PORT=6122 npm run dev
+```
+
+确认阿里云安全组已经放行入站 TCP `6122` 后，外部访问：
+
+```text
+http://8.153.83.178:6122
+```
+
+根路径 `/` 会直接展示主页面，`/quantum_reasoning.html`、`/quantum_knowledge_graph.html`、`/graph_data.json` 和 `/api/*` 都在同一个端口下。
 
 ## 常用 API
 
@@ -411,13 +433,7 @@ POST /api/export/report
 先检查服务：
 
 ```bash
-curl http://127.0.0.1:6123/api/health
-```
-
-如果 6122 代理不通，再检查后端：
-
-```bash
-curl http://127.0.0.1:6123/api/health
+curl http://127.0.0.1:6122/api/health
 ```
 
 如果后端未启动：
@@ -434,10 +450,10 @@ npm run dev
 
 ### 端口被占用
 
-前端服务会从 6122 开始自动寻找可用端口。后端默认使用 6123，如果 6123 被其他项目占用，可以设置：
+项目默认只使用 `6122`。如果 6122 被其他项目占用，需要先停止占用进程；云服务器部署时也必须确认安全组放行 `6122`。
 
 ```bash
-BACKEND_PORT=6124 npm run dev
+lsof -nP -iTCP:6122 -sTCP:LISTEN
 ```
 
 ### 图谱没有显示
@@ -463,8 +479,7 @@ BACKEND_PORT=6124 npm run dev
 
 ## 当前默认配置
 
-- 前端端口：`6122`
-- 后端端口：`6123`
+- 统一服务端口：`6122`
 - 默认导出目录：`~/Downloads`
 - 默认推演模型：`deepseek-v4-pro`
 - 默认图谱文件：`graph_data.json`
