@@ -289,7 +289,13 @@ graph_data["metadata"]["node_count"] = len(graph_data["nodes"])
 graph_data["metadata"]["edge_count"] = len(graph_data["edges"])
 
 # Save to file
-with open("/Users/danielcrystal/WorkBuddy/2026-06-13-17-30-18/graph_data.json", "w", encoding="utf-8") as f:
+import os
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+GRAPH_FILE = os.environ.get("GRAPH_DATA_PATH", os.path.join(BASE_DIR, "graph", "graph_data.json"))
+os.makedirs(os.path.dirname(GRAPH_FILE), exist_ok=True)
+
+with open(GRAPH_FILE, "w", encoding="utf-8") as f:
     json.dump(graph_data, f, ensure_ascii=False, indent=2)
 
 print(f"Graph data created with {len(graph_data['nodes'])} nodes and {len(graph_data['edges'])} edges")

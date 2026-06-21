@@ -87,13 +87,16 @@
 
 ```text
 QuanKnowledeg/
-├── graph_data.json                    # 主知识图谱数据
+├── graph/
+│   └── graph_data.json                # 独立知识图谱数据目录，线上每月只更新这里
+├── graph_data.json                    # 旧路径兼容文件，服务优先读取 graph/graph_data.json
 ├── quantum_reasoning.html             # 3D 研究地图 + 推演引擎主页面
 ├── quantum_knowledge_graph.html       # 原二维知识图谱页面
 ├── reasoning_server.py                # FastAPI 后端、推演、模拟、导出接口
 ├── package.json                       # 本地开发脚本
 ├── scripts/
-│   └── dev-server.js                  # 前端静态服务 + API 代理 + 后端启动检查
+│   ├── dev-server.js                  # 前端静态服务 + API 代理 + 后端启动检查
+│   └── update-graph-only.sh           # 线上只同步 graph/ 的图谱更新脚本
 ├── expand_graph*.py                   # 图谱扩展脚本
 ├── generate_html*.py                  # 历史 HTML 生成脚本
 ├── server.log                         # 后端运行日志
@@ -216,7 +219,46 @@ HOST=0.0.0.0 PORT=6122 npm run dev
 http://8.153.83.178:6122
 ```
 
-根路径 `/` 会直接展示主页面，`/quantum_reasoning.html`、`/quantum_knowledge_graph.html`、`/graph_data.json` 和 `/api/*` 都在同一个端口下。
+根路径 `/` 会直接展示主页面，`/quantum_reasoning.html`、`/quantum_knowledge_graph.html`、`/graph_data.json` 和 `/api/*` 都在同一个端口下。`/graph_data.json` 是兼容旧链接的访问路径，实际优先读取 `graph/graph_data.json`。
+
+## 每月只更新图谱
+
+页面代码、服务代码和用户浏览器里的模型 API Key 都不需要跟着每月图谱更新一起替换。线上服务会优先读取独立目录：
+
+```text
+graph/graph_data.json
+```
+
+后端会在每次访问图谱相关接口时检查这个文件的修改时间；如果文件变了，会自动热加载并重建节点、边、邻接表和标签索引，不需要重启 `reasoning_server.py`。
+
+本地生成新图谱后，把 `graph/graph_data.json` 提交到 GitHub：
+
+```bash
+git add graph/graph_data.json
+git commit -m "Update graph data"
+git push
+```
+
+在阿里云 ECS 的项目目录中，只同步 GitHub 上的 `graph/` 目录：
+
+```bash
+cd /path/to/QuanKnowledeg
+./scripts/update-graph-only.sh
+```
+
+如果 GitHub 默认分支不是 `main`，或项目目录不同，可以这样指定：
+
+```bash
+BRANCH=master ./scripts/update-graph-only.sh /path/to/QuanKnowledeg/graph
+```
+
+同步后确认服务已经读到新图谱：
+
+```bash
+curl http://127.0.0.1:6122/api/health
+```
+
+检查返回里的 `graph_path`、`node_count`、`edge_count` 和 `graph_load_error`。正常情况下 `graph_path` 应该指向 `graph/graph_data.json`，`graph_load_error` 为 `null`。
 
 ## 常用 API
 
@@ -366,7 +408,7 @@ POST /api/export/report
 
 ## 图谱数据说明
 
-主图谱文件是 `graph_data.json`。常见字段包括：
+主图谱文件是 `graph/graph_data.json`。常见字段包括：
 
 - `nodes`：节点列表
 - `edges`：关系边列表
@@ -460,13 +502,13 @@ lsof -nP -iTCP:6122 -sTCP:LISTEN
 
 检查：
 
-- `graph_data.json` 是否存在。
+- `graph/graph_data.json` 是否存在。
 - 浏览器控制台是否有 Three.js CDN 加载错误。
 - `/api/health` 中 `graph_loaded` 是否为 `true`。
 
 ### 导出报告没有文献
 
-导出依赖当前推演过程中的实体、证据和本地图谱来源元数据。如果没有文献，通常说明相关节点缺少 `source_documents` 或 `source_knowledge_bases` 字段。可以在 `graph_data.json` 中补充节点来源元数据。
+导出依赖当前推演过程中的实体、证据和本地图谱来源元数据。如果没有文献，通常说明相关节点缺少 `source_documents` 或 `source_knowledge_bases` 字段。可以在 `graph/graph_data.json` 中补充节点来源元数据。
 
 ## 开发注意事项
 
@@ -474,7 +516,7 @@ lsof -nP -iTCP:6122 -sTCP:LISTEN
 - 前端主要逻辑集中在 `quantum_reasoning.html`。
 - 后端推理、模拟、IMA 引用和导出集中在 `reasoning_server.py`。
 - 修改前端后通常刷新浏览器即可生效。
-- 修改后端后需要重启 `reasoning_server.py`。
+- 修改后端后需要重启 `reasoning_server.py`；只替换 `graph/graph_data.json` 不需要重启。
 - 导出报告涉及 HTML、Word、PDF 三套生成逻辑，改格式时需要同步检查三种格式。
 
 ## 当前默认配置
@@ -482,7 +524,7 @@ lsof -nP -iTCP:6122 -sTCP:LISTEN
 - 统一服务端口：`6122`
 - 默认导出目录：`~/Downloads`
 - 默认推演模型：`deepseek-v4-pro`
-- 默认图谱文件：`graph_data.json`
+- 默认图谱文件：`graph/graph_data.json`
 
 ## 维护建议
 

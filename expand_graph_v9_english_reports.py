@@ -2,9 +2,10 @@
 """Phase 8: enrich graph with English reports visible in the IMA shared knowledge bases."""
 
 import json
+import os
 from pathlib import Path
 
-GRAPH_PATH = Path("graph_data.json")
+GRAPH_PATH = Path(os.environ.get("GRAPH_DATA_PATH", Path(__file__).resolve().parent / "graph" / "graph_data.json"))
 data = json.loads(GRAPH_PATH.read_text(encoding="utf-8"))
 nodes = data["nodes"]
 edges = data["edges"]

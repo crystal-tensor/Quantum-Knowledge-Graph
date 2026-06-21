@@ -7,8 +7,8 @@ D3.js v7 force-directed layout with rich interactivity
 import json
 import os
 
-WORKSPACE = "/Users/danielcrystal/WorkBuddy/2026-06-13-17-30-18"
-GRAPH_FILE = os.path.join(WORKSPACE, "graph_data.json")
+WORKSPACE = os.path.dirname(os.path.abspath(__file__))
+GRAPH_FILE = os.environ.get("GRAPH_DATA_PATH", os.path.join(WORKSPACE, "graph", "graph_data.json"))
 OUTPUT_FILE = os.path.join(WORKSPACE, "quantum_knowledge_graph.html")
 
 def load_graph():

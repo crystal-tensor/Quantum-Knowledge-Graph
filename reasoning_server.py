@@ -15,10 +15,11 @@ import re
 import os
 import time
 import tempfile
+from threading import Lock
 from contextvars import ContextVar
 from typing import List, Dict, Any, Tuple, Optional
 from collections import defaultdict, Counter
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, HTMLResponse, FileResponse
 from pydantic import BaseModel, Field
@@ -84,7 +85,9 @@ MODEL_PROVIDER_PRESETS = [
 MODEL_PROVIDER_BY_ID = {p["id"]: p for p in MODEL_PROVIDER_PRESETS}
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-GRAPH_DATA_PATH = os.path.join(BASE_DIR, "graph_data.json")
+GRAPH_DATA_DIR = os.path.abspath(os.environ.get("GRAPH_DATA_DIR", os.path.join(BASE_DIR, "graph")))
+GRAPH_DATA_PATH = os.path.abspath(os.environ.get("GRAPH_DATA_PATH", os.path.join(GRAPH_DATA_DIR, "graph_data.json")))
+LEGACY_GRAPH_DATA_PATH = os.path.join(BASE_DIR, "graph_data.json")
 HTML_FILE_PATH = os.path.join(BASE_DIR, "quantum_reasoning.html")
 DEFAULT_EXPORT_DIR = os.path.join(os.path.expanduser("~"), "Downloads")
 STATIC_MIME_TYPES = {
@@ -108,35 +111,103 @@ STATIC_MIME_TYPES = {
 # 图谱数据加载
 # ============================================================
 
-print(f"[图谱] 正在加载: {GRAPH_DATA_PATH}")
-
-try:
-    with open(GRAPH_DATA_PATH, "r", encoding="utf-8") as f:
-        GRAPH_DATA = json.load(f)
-    print(f"[图谱] 加载成功: {len(GRAPH_DATA['nodes'])} 节点, {len(GRAPH_DATA['edges'])} 边")
-except Exception as e:
-    print(f"[图谱] 加载失败: {e}")
-    GRAPH_DATA = {"nodes": [], "edges": []}
-
-NODES: Dict[str, Dict] = {n["id"]: n for n in GRAPH_DATA.get("nodes", [])}
-EDGES: List[Dict] = GRAPH_DATA.get("edges", [])
-
-# 邻接表: node_id -> [(edge_dict, neighbor_id)]
+GRAPH_DATA: Dict[str, Any] = {"nodes": [], "edges": []}
+NODES: Dict[str, Dict] = {}
+EDGES: List[Dict] = []
 ADJ: Dict[str, List[Tuple[Dict, str]]] = defaultdict(list)
-for e in EDGES:
-    src, tgt = e.get("source"), e.get("target")
-    if src and tgt:
-        ADJ[src].append((e, tgt))
-        ADJ[tgt].append((e, src))
-
-# 标签索引
 LABEL_INDEX: Dict[str, str] = {}
-for n in GRAPH_DATA.get("nodes", []):
-    lb = n["label"].lower()
-    LABEL_INDEX[lb] = n["id"]
-    base = re.sub(r'[（(].+?[）)]', '', n["label"]).strip().lower()
-    if base and base not in LABEL_INDEX:
-        LABEL_INDEX[base] = n["id"]
+GRAPH_DATA_SIGNATURE: Optional[Tuple[str, int, int]] = None
+GRAPH_LOAD_ERROR: Optional[str] = None
+GRAPH_LOAD_LOCK = Lock()
+
+
+def get_active_graph_path() -> str:
+    """优先使用独立图谱目录，兼容旧的根目录 graph_data.json。"""
+    if os.path.isfile(GRAPH_DATA_PATH):
+        return GRAPH_DATA_PATH
+    return LEGACY_GRAPH_DATA_PATH
+
+
+def build_graph_indexes(graph_data: Dict[str, Any]) -> Tuple[Dict[str, Dict], List[Dict], Dict[str, List[Tuple[Dict, str]]], Dict[str, str]]:
+    """从图谱 JSON 构建后端检索所需索引。"""
+    nodes = {n["id"]: n for n in graph_data.get("nodes", []) if n.get("id")}
+    edges = graph_data.get("edges", [])
+
+    adjacency: Dict[str, List[Tuple[Dict, str]]] = defaultdict(list)
+    for e in edges:
+        src, tgt = e.get("source"), e.get("target")
+        if src and tgt:
+            adjacency[src].append((e, tgt))
+            adjacency[tgt].append((e, src))
+
+    label_index: Dict[str, str] = {}
+    for n in graph_data.get("nodes", []):
+        label = n.get("label")
+        node_id = n.get("id")
+        if not label or not node_id:
+            continue
+        lb = label.lower()
+        label_index[lb] = node_id
+        base = re.sub(r'[（(].+?[）)]', '', label).strip().lower()
+        if base and base not in label_index:
+            label_index[base] = node_id
+
+    return nodes, edges, adjacency, label_index
+
+
+def refresh_graph_data(force: bool = False) -> Dict[str, Any]:
+    """如果图谱文件更新了，热加载 JSON 并重建索引。"""
+    global GRAPH_DATA, NODES, EDGES, ADJ, LABEL_INDEX, GRAPH_DATA_SIGNATURE, GRAPH_LOAD_ERROR
+
+    graph_path = get_active_graph_path()
+    try:
+        stat = os.stat(graph_path)
+    except FileNotFoundError:
+        GRAPH_LOAD_ERROR = f"图谱文件不存在: {graph_path}"
+        return GRAPH_DATA
+
+    signature = (graph_path, stat.st_mtime_ns, stat.st_size)
+    if not force and signature == GRAPH_DATA_SIGNATURE:
+        return GRAPH_DATA
+
+    with GRAPH_LOAD_LOCK:
+        if not force and signature == GRAPH_DATA_SIGNATURE:
+            return GRAPH_DATA
+
+        print(f"[图谱] 正在加载: {graph_path}")
+        try:
+            with open(graph_path, "r", encoding="utf-8") as f:
+                new_graph_data = json.load(f)
+            if not isinstance(new_graph_data.get("nodes"), list) or not isinstance(new_graph_data.get("edges"), list):
+                raise ValueError("graph_data.json 必须包含 nodes 和 edges 数组")
+
+            new_nodes, new_edges, new_adj, new_label_index = build_graph_indexes(new_graph_data)
+            GRAPH_DATA = new_graph_data
+            NODES = new_nodes
+            EDGES = new_edges
+            ADJ = new_adj
+            LABEL_INDEX = new_label_index
+            GRAPH_DATA_SIGNATURE = signature
+            GRAPH_LOAD_ERROR = None
+            print(f"[图谱] 加载成功: {len(GRAPH_DATA['nodes'])} 节点, {len(EDGES)} 边")
+        except Exception as e:
+            GRAPH_LOAD_ERROR = f"{type(e).__name__}: {e}"
+            print(f"[图谱] 加载失败: {GRAPH_LOAD_ERROR}")
+
+    return GRAPH_DATA
+
+
+def require_graph_data() -> Dict[str, Any]:
+    graph_data = refresh_graph_data()
+    if not graph_data.get("nodes"):
+        detail = "图谱数据未加载"
+        if GRAPH_LOAD_ERROR:
+            detail = f"{detail}: {GRAPH_LOAD_ERROR}"
+        raise HTTPException(status_code=503, detail=detail)
+    return graph_data
+
+
+refresh_graph_data(force=True)
 
 # 类型映射
 TYPE_LABELS = {
@@ -1734,6 +1805,11 @@ def resolve_static_file(static_path: str) -> Tuple[str, str]:
     requested = (static_path or "quantum_reasoning.html").lstrip("/")
     if requested.startswith("api/"):
         raise HTTPException(status_code=404, detail="API route not found")
+    if requested == "graph_data.json":
+        graph_path = get_active_graph_path()
+        if not os.path.isfile(graph_path):
+            raise HTTPException(status_code=404, detail=f"图谱文件不存在: {graph_path}")
+        return graph_path, STATIC_MIME_TYPES[".json"]
 
     full_path = os.path.abspath(os.path.join(BASE_DIR, requested))
     if full_path != BASE_DIR and not full_path.startswith(BASE_DIR + os.sep):
@@ -1748,10 +1824,9 @@ def resolve_static_file(static_path: str) -> Tuple[str, str]:
 @app.get("/api/stats")
 async def get_stats():
     """获取图谱统计信息"""
-    if not GRAPH_DATA.get("nodes"):
-        raise HTTPException(status_code=503, detail="图谱数据未加载")
+    graph_data = require_graph_data()
 
-    type_counts = Counter(n["type"] for n in GRAPH_DATA["nodes"])
+    type_counts = Counter(n["type"] for n in graph_data["nodes"])
     edge_label_counts = Counter(e.get("label", "(无标签)") for e in EDGES)
 
     degree_dist = {}
@@ -1762,12 +1837,12 @@ async def get_stats():
         degree_dist[key] = degree_dist.get(key, 0) + 1
 
     return {
-        "total_nodes": len(GRAPH_DATA["nodes"]),
+        "total_nodes": len(graph_data["nodes"]),
         "total_edges": len(EDGES),
         "entity_types": {TYPE_LABELS.get(k, k): v for k, v in type_counts.most_common()},
         "top_relations": dict(edge_label_counts.most_common(20)),
         "degree_distribution": degree_dist,
-        "graph_metadata": GRAPH_DATA.get("metadata", {})
+        "graph_metadata": graph_data.get("metadata", {})
     }
 
 
@@ -1814,12 +1889,11 @@ async def test_model(req: ModelTestRequest):
 @app.post("/api/subgraph")
 async def get_relevant_subgraph(req: SubgraphRequest):
     """获取与问题相关的子图"""
-    if not GRAPH_DATA.get("nodes"):
-        raise HTTPException(status_code=503, detail="图谱数据未加载")
+    graph_data = require_graph_data()
 
     seeds = find_seed_nodes(req.question, top_k=15)
     if not seeds:
-        seeds = sorted(GRAPH_DATA["nodes"], key=lambda n: n.get("properties", {}).get("importance", 0), reverse=True)[:5]
+        seeds = sorted(graph_data["nodes"], key=lambda n: n.get("properties", {}).get("importance", 0), reverse=True)[:5]
 
     seed_ids = [n["id"] for n in seeds]
     subgraph = get_subgraph(seed_ids, max_nodes=req.max_nodes)
@@ -1842,8 +1916,7 @@ async def get_relevant_subgraph(req: SubgraphRequest):
 @app.post("/api/reason")
 async def reason(req: ReasonRequest):
     """推理推演（SSE流式输出）"""
-    if not GRAPH_DATA.get("nodes"):
-        raise HTTPException(status_code=503, detail="图谱数据未加载")
+    require_graph_data()
 
     return StreamingResponse(
         stream_with_model_config(reasoning_mode(req.question, max_nodes=req.max_nodes, lang=req.lang), req.llm_config, "reason"),
@@ -1855,8 +1928,7 @@ async def reason(req: ReasonRequest):
 @app.post("/api/simulate")
 async def simulate(req: ReasonRequest):
     """多智能体模拟（SSE流式输出）"""
-    if not GRAPH_DATA.get("nodes"):
-        raise HTTPException(status_code=503, detail="图谱数据未加载")
+    require_graph_data()
 
     return StreamingResponse(
         stream_with_model_config(simulation_mode(req.question, rounds=req.rounds, max_nodes=req.max_nodes, lang=req.lang), req.llm_config, "simulate"),
@@ -1866,22 +1938,36 @@ async def simulate(req: ReasonRequest):
 
 
 @app.get("/api/graph/full")
-async def get_full_graph(limit_nodes: int = 500, limit_edges: int = 2000):
+async def get_full_graph(response: Response, limit_nodes: int = 500, limit_edges: int = 2000):
     """获取完整图谱数据"""
-    nodes = GRAPH_DATA.get("nodes", [])[:limit_nodes]
-    edges = GRAPH_DATA.get("edges", [])[:limit_edges]
+    graph_data = require_graph_data()
+    response.headers["Cache-Control"] = "no-store, max-age=0"
+    nodes = graph_data.get("nodes", [])[:limit_nodes]
+    edges = graph_data.get("edges", [])[:limit_edges]
     return {
         "nodes": nodes,
         "edges": edges,
-        "truncated": len(GRAPH_DATA.get("nodes", [])) > limit_nodes or len(GRAPH_DATA.get("edges", [])) > limit_edges,
-        "total_nodes": len(GRAPH_DATA.get("nodes", [])),
-        "total_edges": len(GRAPH_DATA.get("edges", []))
+        "truncated": len(graph_data.get("nodes", [])) > limit_nodes or len(graph_data.get("edges", [])) > limit_edges,
+        "total_nodes": len(graph_data.get("nodes", [])),
+        "total_edges": len(graph_data.get("edges", []))
     }
+
+
+@app.api_route("/graph_data.json", methods=["GET", "HEAD"])
+async def serve_graph_data_json():
+    """兼容旧路径，但实际读取独立图谱目录中的 JSON。"""
+    require_graph_data()
+    return FileResponse(
+        get_active_graph_path(),
+        media_type=STATIC_MIME_TYPES[".json"],
+        headers={"Cache-Control": "no-store, max-age=0"}
+    )
 
 
 @app.get("/api/graph/neighborhood/{node_id}")
 async def get_node_neighborhood_api(node_id: str, max_hops: int = 2):
     """获取某个节点的邻域子图"""
+    require_graph_data()
     if node_id not in NODES:
         raise HTTPException(status_code=404, detail=f"节点不存在: {node_id}")
     subgraph = get_node_neighborhood(node_id, max_hops=max_hops)
@@ -1891,9 +1977,15 @@ async def get_node_neighborhood_api(node_id: str, max_hops: int = 2):
 @app.get("/api/health")
 async def health_check():
     """健康检查"""
+    refresh_graph_data()
+    graph_path = get_active_graph_path()
     return {
         "status": "ok",
         "base_dir": BASE_DIR,
+        "graph_dir": GRAPH_DATA_DIR,
+        "graph_path": graph_path,
+        "graph_signature": GRAPH_DATA_SIGNATURE,
+        "graph_load_error": GRAPH_LOAD_ERROR,
         "graph_loaded": len(GRAPH_DATA.get("nodes", [])) > 0,
         "node_count": len(GRAPH_DATA.get("nodes", [])),
         "edge_count": len(GRAPH_DATA.get("edges", [])),
@@ -1922,6 +2014,7 @@ class IMAReferenceRequest(BaseModel):
 @app.post("/api/ima/references")
 async def get_ima_references(req: IMAReferenceRequest):
     """获取IMA知识库相关引用"""
+    require_graph_data()
     references = []
 
     # 从子图节点提取source_knowledge_bases
@@ -2211,15 +2304,10 @@ def build_report_html(req: ExportRequest) -> str:
     # IMA引用
     ima_html = ""
     for i, ref in enumerate(normalize_ima_references(req.ima_references), start=1):
-        related_nodes = "、".join(ref.get("related_nodes", []))
-        related_html = f"<div style='font-size:12px;color:#059669;margin-top:6px'>{'关联节点' if is_zh else 'Related nodes'}: {escape_html(related_nodes)}</div>" if related_nodes else ""
-        content_html = f"<div style='margin-top:8px;padding:10px;background:#f8fafc;border-radius:6px;line-height:1.7;font-size:12px;color:#475569'>{report_html_text(ref.get('content', ''))}</div>" if ref.get("content") else ""
         ima_html += f"""
         <div style="margin:10px 0;padding:12px;border:1px solid #e2e8f0;border-radius:8px;page-break-inside:avoid">
           <div style="font-weight:700;color:#1e293b">{i}. {escape_html(ref.get("title", ""))}</div>
           <div style="font-size:12px;color:#64748b;margin-top:4px">{'知识库' if is_zh else 'Knowledge Base'}: {escape_html(ref.get("kb_name", ""))} ｜ {'文档数' if is_zh else 'Docs'}: {normalize_doc_count(ref.get("doc_count", 1))}</div>
-          {related_html}
-          {content_html}
         </div>"""
 
     mode_label = "逐步推理" if req.mode == "reasoning" else "多智能体模拟"
@@ -2244,7 +2332,8 @@ def build_report_html(req: ExportRequest) -> str:
     ima_section_html = ""
     if ima_html:
         ima_title = "相关文献列表" if is_zh else "Related Literature"
-        ima_section_html = f"<div class='section'><h2>📚 {ima_title}</h2>{ima_html}</div>"
+        ima_notice = "出于版权安全考虑，导出报告仅保留文献标题与来源，正文内容不随报告导出。" if is_zh else "For copyright safety, exported reports include only titles and source metadata; source text is not exported."
+        ima_section_html = f"<div class='section'><h2>📚 {ima_title}</h2><div style='font-size:12px;color:#64748b;margin-bottom:10px'>{ima_notice}</div>{ima_html}</div>"
 
     conf_color = "#10b981" if conf_pct > 70 else "#f59e0b" if conf_pct > 40 else "#ef4444"
 
@@ -2389,13 +2478,10 @@ def build_report_plain_lines(req: ExportRequest) -> List[str]:
     ima_refs = normalize_ima_references(req.ima_references)
     if ima_refs:
         add("相关文献列表" if is_zh else "Related Literature")
+        add("出于版权安全考虑，导出报告仅保留文献标题与来源，正文内容不随报告导出。" if is_zh else "For copyright safety, exported reports include only titles and source metadata; source text is not exported.")
         for i, ref in enumerate(ima_refs, start=1):
             add(f"{i}. {ref.get('title', '')}")
             add(f"{'知识库' if is_zh else 'Knowledge Base'}: {ref.get('kb_name', '')} | {'文档数' if is_zh else 'Docs'}: {normalize_doc_count(ref.get('doc_count', 1))}")
-            if ref.get("related_nodes"):
-                add(("关联节点: " if is_zh else "Related nodes: ") + "、".join(ref["related_nodes"]))
-            if ref.get("content"):
-                add(ref.get("content", ""))
             add("")
 
     add("本报告由量子知识图谱推演引擎自动生成" if is_zh else "Auto-generated by Quantum Knowledge Graph Reasoning Engine")
@@ -2655,6 +2741,7 @@ def build_report_docx(req: ExportRequest) -> bytes:
     ima_refs = normalize_ima_references(req.ima_references)
     if ima_refs:
         doc.add_heading('📚 ' + ('相关文献列表' if is_zh else 'Related Literature'), 1)
+        doc.add_paragraph('出于版权安全考虑，导出报告仅保留文献标题与来源，正文内容不随报告导出。' if is_zh else 'For copyright safety, exported reports include only titles and source metadata; source text is not exported.')
         ima_table = doc.add_table(rows=1, cols=3)
         ima_table.style = 'Light Grid Accent 1'
         hdr = ima_table.rows[0].cells
@@ -2666,10 +2753,6 @@ def build_report_docx(req: ExportRequest) -> bytes:
             row[0].text = ref.get("title", "")
             row[1].text = ref.get("kb_name", "")
             row[2].text = str(normalize_doc_count(ref.get("doc_count", 1)))
-            if ref.get("related_nodes"):
-                doc.add_paragraph(('关联节点: ' if is_zh else 'Related nodes: ') + '、'.join(ref["related_nodes"]))
-            if ref.get("content"):
-                doc.add_paragraph(clean_report_text(ref["content"]))
 
     # 页脚
     doc.add_paragraph()
@@ -2783,6 +2866,7 @@ def build_report_pdf(req: ExportRequest) -> bytes:
     ima_refs = normalize_ima_references(req.ima_references)
     if ima_refs:
         story.append(Paragraph("相关文献列表" if is_zh else "Related Literature", styles["QHeading"]))
+        story.append(Paragraph("出于版权安全考虑，导出报告仅保留文献标题与来源，正文内容不随报告导出。" if is_zh else "For copyright safety, exported reports include only titles and source metadata; source text is not exported.", styles["QBody"]))
         data = [[
             Paragraph("标题" if is_zh else "Title", styles["QBody"]),
             Paragraph("知识库" if is_zh else "Knowledge Base", styles["QBody"]),
@@ -2802,12 +2886,6 @@ def build_report_pdf(req: ExportRequest) -> bytes:
         ]))
         story.append(table)
         story.append(Spacer(1, 0.2 * cm))
-        for ref in ima_refs:
-            if ref.get("related_nodes"):
-                story.append(Paragraph(f"{'关联节点' if is_zh else 'Related nodes'}: {esc('、'.join(ref['related_nodes']))}", styles["QBody"]))
-            if ref.get("content"):
-                story.append(Paragraph(esc(ref.get("content", "")), styles["QBody"]))
-                story.append(Spacer(1, 0.15 * cm))
 
     story.append(Spacer(1, 0.6 * cm))
     story.append(Paragraph("本报告由量子知识图谱推演引擎自动生成" if is_zh else "Auto-generated by Quantum Knowledge Graph Reasoning Engine", styles["QMeta"]))
@@ -2874,7 +2952,10 @@ async def export_report(req: ExportRequest):
 async def serve_static_file(static_path: str):
     """在同一个 6122 端口上服务前端页面和静态资源。"""
     file_path, media_type = resolve_static_file(static_path)
-    return FileResponse(file_path, media_type=media_type)
+    headers = {}
+    if os.path.abspath(file_path) == os.path.abspath(get_active_graph_path()):
+        headers["Cache-Control"] = "no-store, max-age=0"
+    return FileResponse(file_path, media_type=media_type, headers=headers)
 
 
 # ============================================================
@@ -2887,5 +2968,6 @@ if __name__ == "__main__":
     print(f"[配置] 监听: {DEFAULT_HOST}:{DEFAULT_PORT}")
     print(f"[配置] 端口: {DEFAULT_PORT}")
     print(f"[配置] DeepSeek Model: {DEEPSEEK_MODEL}")
+    print(f"[配置] Graph Dir: {GRAPH_DATA_DIR}")
     print(f"[配置] Graph Data: {GRAPH_DATA_PATH}")
     uvicorn.run(app, host=DEFAULT_HOST, port=DEFAULT_PORT)

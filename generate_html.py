@@ -1,7 +1,11 @@
 import json
+import os
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+GRAPH_FILE = os.environ.get("GRAPH_DATA_PATH", os.path.join(BASE_DIR, "graph", "graph_data.json"))
 
 # Load graph data
-with open("/Users/danielcrystal/WorkBuddy/2026-06-13-17-30-18/graph_data.json", "r", encoding="utf-8") as f:
+with open(GRAPH_FILE, "r", encoding="utf-8") as f:
     graph_data = json.load(f)
 
 # Create HTML content

@@ -2,8 +2,12 @@
 """expand_graph_v8.py - Phase 7: Connect orphan nodes, enrich low-connection nodes, systematic cross-links"""
 
 import json
+import os
 
-with open('graph_data.json', 'r') as f:
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+GRAPH_FILE = os.environ.get("GRAPH_DATA_PATH", os.path.join(BASE_DIR, "graph", "graph_data.json"))
+
+with open(GRAPH_FILE, 'r') as f:
     data = json.load(f)
 
 nodes = data['nodes']
@@ -567,7 +571,7 @@ data['metadata']['node_count'] = len(nodes)
 data['metadata']['expansion_notes'] = f"Phase 7: 连接孤立节点、丰富低连接节点、系统性交叉链接. Added {new_edge_count} new edges."
 data['metadata']['last_updated'] = "2026-06-13"
 
-with open('graph_data.json', 'w') as f:
+with open(GRAPH_FILE, 'w') as f:
     json.dump(data, f, ensure_ascii=False, indent=2)
 
 print(f"Added {new_edge_count} new edges")
