@@ -87,13 +87,16 @@ The export pipeline removes Markdown markers such as `###`, `- **`, and `>` from
 
 ```text
 QuanKnowledeg/
-|-- graph_data.json                    # Main knowledge graph data
+|-- graph/
+|   `-- graph_data.json                # Standalone graph data; only this directory is updated monthly in production
+|-- graph_data.json                    # Legacy compatibility file; the service prefers graph/graph_data.json
 |-- quantum_reasoning.html             # 3D research map and reasoning interface
 |-- quantum_knowledge_graph.html       # Original 2D knowledge graph
 |-- reasoning_server.py                # FastAPI backend, reasoning, simulation, and export APIs
 |-- package.json                       # Local development scripts
 |-- scripts/
-|   `-- dev-server.js                  # Static server, API proxy, and backend startup checks
+|   |-- dev-server.js                  # Static server, API proxy, and backend startup checks
+|   `-- update-graph-only.sh           # Production script that synchronizes only graph/
 |-- expand_graph*.py                   # Graph expansion scripts
 |-- generate_html*.py                  # Legacy HTML generation scripts
 |-- server.log                         # Backend runtime log
@@ -216,7 +219,46 @@ After allowing inbound TCP traffic on port `6122` in the Alibaba Cloud security 
 http://8.153.83.178:6122
 ```
 
-The root path `/` serves the main page. `/quantum_reasoning.html`, `/quantum_knowledge_graph.html`, `/graph_data.json`, and `/api/*` are all available through the same port.
+The root path `/` serves the main page. `/quantum_reasoning.html`, `/quantum_knowledge_graph.html`, `/graph_data.json`, and `/api/*` are all available through the same port. `/graph_data.json` remains available for legacy links, while the service prefers the data in `graph/graph_data.json`.
+
+## Monthly Graph-Only Updates
+
+Monthly graph updates do not require replacing the page code, service code, or model API keys stored in users' browsers. The production service prefers the standalone graph file:
+
+```text
+graph/graph_data.json
+```
+
+Whenever a graph-related endpoint is requested, the backend checks this file's modification time. If the file has changed, the service automatically reloads it and rebuilds the node, edge, adjacency, and label indexes without restarting `reasoning_server.py`.
+
+After generating a new graph locally, commit `graph/graph_data.json` to GitHub:
+
+```bash
+git add graph/graph_data.json
+git commit -m "Update graph data"
+git push
+```
+
+From the project directory on an Alibaba Cloud ECS instance, synchronize only the `graph/` directory from GitHub:
+
+```bash
+cd /path/to/QuanKnowledeg
+./scripts/update-graph-only.sh
+```
+
+If the default GitHub branch is not `main`, or the project directory is different, specify the values explicitly:
+
+```bash
+BRANCH=master ./scripts/update-graph-only.sh /path/to/QuanKnowledeg/graph
+```
+
+Confirm that the service has loaded the updated graph:
+
+```bash
+curl http://127.0.0.1:6122/api/health
+```
+
+Inspect `graph_path`, `node_count`, `edge_count`, and `graph_load_error` in the response. Under normal conditions, `graph_path` points to `graph/graph_data.json` and `graph_load_error` is `null`.
 
 ## API Reference
 
@@ -366,7 +408,7 @@ Request fields:
 
 ## Graph Data
 
-The main graph file is `graph_data.json`. Common top-level fields include:
+The main graph file is `graph/graph_data.json`. Common top-level fields include:
 
 - `nodes`: node list
 - `edges`: relationship edge list
@@ -460,13 +502,13 @@ lsof -nP -iTCP:6122 -sTCP:LISTEN
 
 Check that:
 
-- `graph_data.json` exists.
+- `graph/graph_data.json` exists.
 - The browser console does not report a Three.js CDN loading error.
 - `graph_loaded` is `true` in the `/api/health` response.
 
 ### Exported Reports Do Not Include References
 
-Report references depend on the entities, evidence, and local graph source metadata in the current reasoning task. Missing references usually indicate that relevant nodes do not contain `source_documents` or `source_knowledge_bases`. Add the missing source metadata to those nodes in `graph_data.json`.
+Report references depend on the entities, evidence, and local graph source metadata in the current reasoning task. Missing references usually indicate that relevant nodes do not contain `source_documents` or `source_knowledge_bases`. Add the missing source metadata to those nodes in `graph/graph_data.json`.
 
 ## Development Notes
 
@@ -474,7 +516,7 @@ Report references depend on the entities, evidence, and local graph source metad
 - Most frontend logic is in `quantum_reasoning.html`.
 - Backend reasoning, simulation, IMA references, and export logic are in `reasoning_server.py`.
 - Frontend changes usually take effect after refreshing the browser.
-- Backend changes require restarting `reasoning_server.py`.
+- Backend changes require restarting `reasoning_server.py`; replacing only `graph/graph_data.json` does not.
 - Report export has separate HTML, Word, and PDF generation paths. Check all three formats when changing report formatting.
 
 ## Current Defaults
@@ -482,7 +524,7 @@ Report references depend on the entities, evidence, and local graph source metad
 - Unified service port: `6122`
 - Default export directory: `~/Downloads`
 - Default reasoning model: `deepseek-v4-pro`
-- Default graph file: `graph_data.json`
+- Default graph file: `graph/graph_data.json`
 
 ## Maintenance Recommendations
 
